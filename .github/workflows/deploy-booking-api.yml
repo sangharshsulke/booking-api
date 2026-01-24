@@ -1,0 +1,36 @@
+name: Deploy Booking API
+
+on:
+  push:
+    branches:
+      - uat-booking-api
+      - production-booking-api
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Deploy to VPS
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ secrets.SERVER_IP }}
+        username: ${{ secrets.SERVER_USER }}
+        key: ${{ secrets.SSH_PRIVATE_KEY }}
+        script: |
+          if [ "${{ github.ref_name }}" = "uat-booking-api" ]; then
+            cd /var/www/booking-api/uat
+            git pull origin uat-booking-api
+            npm install
+            pm2 restart booking-api-uat
+          fi
+
+          if [ "${{ github.ref_name }}" = "production-booking-api" ]; then
+            cd /var/www/booking-api/production
+            git pull origin production-booking-api
+            npm install
+            pm2 restart booking-api-production
+          fi
