@@ -68,5 +68,10 @@ router.put('/bookings/:id/status', adminController.updateBookingStatus);
 router.put('/bookings/:id/cancel', adminController.cancelBooking);
 router.get('/vendors/:id/services', adminController.getVendorServicesForBooking);
 
+//Notification
+router.post('/send-notification', adminController.sendNotification);
+router.get('/fcm-tokens', adminController.checkUserFCMTokens);
+
+
 
 module.exports = router;

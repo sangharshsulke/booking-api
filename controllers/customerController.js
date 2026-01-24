@@ -11,19 +11,23 @@ const getDashboardStats = async (req, res) => {
 
     // Get total bookings
     const bookingsStats = await db.query(
-      `SELECT 
+        `SELECT 
         COUNT(*) as total_bookings,
         SUM(CASE WHEN booking_status = 'completed' THEN 1 ELSE 0 END) as completed_bookings,
         SUM(CASE WHEN booking_status = 'confirmed' THEN 1 ELSE 0 END) as upcoming_bookings,
         SUM(CASE WHEN booking_status = 'cancelled' THEN 1 ELSE 0 END) as cancelled_bookings
       FROM bookings
       WHERE user_id = $1 AND status = 'active'`,
+<<<<<<< HEAD
       [customerId]
+=======
+        [customerId]
+>>>>>>> 420b244 (Fixes in auth)
     );
 
     // Get upcoming bookings
     const upcomingBookings = await db.query(
-      `SELECT 
+        `SELECT 
         b.booking_id,
         b.booking_date,
         b.booking_time,
@@ -44,12 +48,12 @@ const getDashboardStats = async (req, res) => {
         AND b.status = 'active'
       ORDER BY b.booking_date ASC
       LIMIT 5`,
-      [customerId]
+        [customerId]
     );
 
     // Get favorite vendors (most booked)
     const favoriteVendors = await db.query(
-      `SELECT 
+        `SELECT 
         b.vendor_id,
         vsd.shop_name,
         vsd.city,
@@ -63,13 +67,14 @@ const getDashboardStats = async (req, res) => {
       GROUP BY b.vendor_id, vsd.shop_name, vsd.city, vm.average_rating, vm.total_reviews
       ORDER BY booking_count DESC
       LIMIT 5`,
-      [customerId]
+        [customerId]
     );
 
     const stats = bookingsStats.rows[0];
 
     res.json({
       success: true,
+      message: "Loaded",
       data: {
         total_bookings: parseInt(stats.total_bookings) || 0,
         completed_bookings: parseInt(stats.completed_bookings) || 0,
@@ -127,12 +132,16 @@ const getAllShops = async (req, res) => {
       FROM users u
       INNER JOIN vendor_shop_details vsd ON u.user_id = vsd.user_id
       LEFT JOIN vendor_metrics vm ON u.user_id = vm.vendor_id
+<<<<<<< HEAD
       WHERE u.user_type = 'vendor' 
+=======
+      WHERE u.user_type = 'VENDOR' 
+>>>>>>> 420b244 (Fixes in auth)
         AND u.status = 'active' 
         AND u.status = 'active' 
         AND vsd.status = 'active'
     `;
-    
+
     const params = [];
     let paramCount = 1;
 
@@ -188,6 +197,7 @@ const getAllShops = async (req, res) => {
 
     res.json({
       success: true,
+      message: "Loaded",
       data: {
         shops: result.rows,
         pagination: {
@@ -260,18 +270,18 @@ const getShopDetails = async (req, res) => {
 
     // Get shop images
     const images = await db.query(
-      `SELECT document_id, document_url, document_type, is_primary
+        `SELECT document_id, document_url, document_type, is_primary
        FROM vendor_documents
        WHERE vendor_id = $1 
          AND document_type IN ('shop_profile_image', 'shop_gallery_image')
          AND status = 'active'
        ORDER BY is_primary DESC, created_at DESC`,
-      [shopData.vendor_id]
+        [shopData.vendor_id]
     );
 
     // Get shop services
     const services = await db.query(
-      `SELECT 
+        `SELECT 
         vs.vendor_service_id,
         sm.service_id,
         sm.service_name,
@@ -287,12 +297,12 @@ const getShopDetails = async (req, res) => {
         AND sm.status = 'active'
         AND vs.is_available = true
       ORDER BY sm.category, sm.service_name`,
-      [shopData.vendor_id]
+        [shopData.vendor_id]
     );
 
     // Get recent reviews
     const reviews = await db.query(
-      `SELECT 
+        `SELECT 
         r.review_id,
         r.rating,
         r.review_text,
@@ -305,11 +315,12 @@ const getShopDetails = async (req, res) => {
       WHERE r.vendor_id = $1 AND r.status = 'active'
       ORDER BY r.created_at DESC
       LIMIT 10`,
-      [shopData.vendor_id]
+        [shopData.vendor_id]
     );
 
     res.json({
       success: true,
+      message: "Loaded",
       data: {
         ...shopData,
         images: images.rows,
@@ -343,7 +354,11 @@ const getAvailableSlots = async (req, res) => {
 
     // Get shop details
     const shop = await db.query(
+<<<<<<< HEAD
       `SELECT 
+=======
+        `SELECT 
+>>>>>>> 420b244 (Fixes in auth)
         user_id,
         open_time,
         close_time,
@@ -353,7 +368,7 @@ const getAvailableSlots = async (req, res) => {
         no_of_seats
       FROM vendor_shop_details
       WHERE shop_id = $1`,
-      [shopId]
+        [shopId]
     );
 
     if (shop.rows.length === 0) {
@@ -381,14 +396,14 @@ const getAvailableSlots = async (req, res) => {
 
     // Get existing bookings for this date
     const existingBookings = await db.query(
-      `SELECT booking_time, COUNT(*) as bookings_count
+        `SELECT booking_time, COUNT(*) as bookings_count
        FROM bookings
        WHERE vendor_id = $1 
          AND booking_date = $2
          AND booking_status IN ('confirmed', 'completed')
          AND status = 'active'
        GROUP BY booking_time`,
-      [shopData.vendor_id, date]
+        [shopData.vendor_id, date]
     );
 
     // Generate time slots (30-minute intervals)
@@ -404,7 +419,7 @@ const getAvailableSlots = async (req, res) => {
 
     while (currentTime < endTime) {
       const timeString = currentTime.toTimeString().slice(0, 5);
-      
+
       // Check if slot is during break time
       let isDuringBreak = false;
       if (breakStart && breakEnd) {
@@ -431,6 +446,7 @@ const getAvailableSlots = async (req, res) => {
 
     res.json({
       success: true,
+      message: "Loaded",
       data: {
         is_closed: false,
         date: date,
@@ -457,98 +473,160 @@ const getAvailableSlots = async (req, res) => {
 // BOOKING MANAGEMENT
 // ============================================
 
-// Create booking
+// Create Booking API
 const createBooking = async (req, res) => {
   const client = await db.pool.connect();
-  
+
   try {
     const customerId = req.user.userId;
-    const { vendor_id, booking_date, booking_time, services, notes } = req.body;
+    const {
+      vendor_id,
+      booking_date,
+      booking_time,
+      time_slot,
+      services,
+      service_ids,
+      notes,
+      payment_method
+    } = req.body;
+
+    // Accept both time field names
+    const timeSlot = time_slot || booking_time;
+
+    // Accept both service formats
+    let serviceIdsList = [];
+    if (service_ids && Array.isArray(service_ids)) {
+      serviceIdsList = service_ids;
+    } else if (services && Array.isArray(services)) {
+      serviceIdsList = services.map(s =>
+          parseInt(s.vendor_service_id) || parseInt(s.service_id)
+      );
+    }
 
     // Validation
-    if (!vendor_id || !booking_date || !booking_time || !services || services.length === 0) {
+    if (!vendor_id || !booking_date || !timeSlot || !serviceIdsList.length) {
       return res.status(400).json({
         success: false,
-        message: 'Vendor ID, booking date, time, and services are required.'
+        message: 'Vendor ID, booking date, time, and services are required.',
       });
     }
 
     await client.query('BEGIN');
 
-    // Verify vendor exists and is active
+    // Verify vendor
     const vendorCheck = await client.query(
+<<<<<<< HEAD
       'SELECT user_id, status FROM users WHERE user_id = $1 AND user_type = $2 AND status = $3',
       [vendor_id, 'VENDOR', 'active']
+=======
+        `SELECT user_id FROM users 
+       WHERE user_id = $1 AND user_type = 'VENDOR' AND status = 'active'`,
+        [vendor_id]
+>>>>>>> 420b244 (Fixes in auth)
     );
 
-    if (vendorCheck.rows.length === 0) {
+    if (!vendorCheck.rows.length) {
       await client.query('ROLLBACK');
       return res.status(404).json({
         success: false,
-        message: 'Vendor not found or not available.'
+        message: 'Vendor not found or not available.',
       });
     }
 
+<<<<<<< HEAD
     if (vendorCheck.rows[0].status !== 'active') {
+=======
+    // Get shop details
+    const shopDetails = await client.query(
+        `SELECT no_of_seats, shop_id 
+       FROM vendor_shop_details WHERE user_id = $1`,
+        [vendor_id]
+    );
+
+    if (!shopDetails.rows.length) {
+>>>>>>> 420b244 (Fixes in auth)
       await client.query('ROLLBACK');
-      return res.status(400).json({
+      return res.status(404).json({
         success: false,
-        message: 'Vendor is not verified.'
+        message: 'Vendor shop details not found.',
       });
     }
 
     // Check slot availability
+<<<<<<< HEAD
     const shopDetails = await client.query(
       'SELECT no_of_seats FROM vendor_shop_details WHERE user_id = $1',
       [vendor_id]
     );
 
+=======
+>>>>>>> 420b244 (Fixes in auth)
     const existingBookings = await client.query(
-      `SELECT COUNT(*) as count FROM bookings 
-       WHERE vendor_id = $1 AND booking_date = $2 AND booking_time = $3 
-         AND booking_status IN ('confirmed', 'completed') AND status = 'active'`,
-      [vendor_id, booking_date, booking_time]
+        `SELECT COUNT(*) 
+       FROM bookings
+       WHERE vendor_id = $1 
+         AND booking_date = $2 
+         AND booking_time = $3
+         AND booking_status IN ('confirmed', 'completed')
+         AND status = 'active'`,
+        [vendor_id, booking_date, timeSlot]
     );
 
-    const bookedSeats = parseInt(existingBookings.rows[0].count);
-    const totalSeats = shopDetails.rows[0].no_of_seats;
-
-    if (bookedSeats >= totalSeats) {
+    if (
+        parseInt(existingBookings.rows[0].count, 10) >=
+        shopDetails.rows[0].no_of_seats
+    ) {
       await client.query('ROLLBACK');
       return res.status(400).json({
         success: false,
-        message: 'Selected time slot is not available.'
+        message: 'Selected time slot is not available.',
       });
     }
 
-    // Calculate total price and duration
+    // Calculate total price and get service details
     let totalPrice = 0;
     let totalDuration = 0;
+    const serviceDetails = [];
 
-    for (const service of services) {
-      const serviceCheck = await client.query(
-        `SELECT vs.price, sm.default_duration_minutes 
+    for (const serviceId of serviceIdsList) {
+      // Find service (try both vendor_service_id and service_id)
+      let serviceRow = await client.query(
+          `SELECT 
+          vs.vendor_service_id,
+          vs.service_id,
+          vs.price,
+          sm.service_name,
+          sm.default_duration_minutes
          FROM vendor_services vs
-         INNER JOIN services_master sm ON vs.service_id = sm.service_id
-         WHERE vs.vendor_service_id = $1 AND vs.vendor_id = $2 AND vs.status = 'active'`,
-        [service.vendor_service_id, vendor_id]
+         JOIN services_master sm ON sm.service_id = vs.service_id
+         WHERE (vs.vendor_service_id = $1 OR vs.service_id = $1)
+           AND vs.vendor_id = $2 
+           AND vs.status = 'active'
+         LIMIT 1`,
+          [serviceId, vendor_id]
       );
 
-      if (serviceCheck.rows.length === 0) {
+      if (!serviceRow.rows.length) {
         await client.query('ROLLBACK');
         return res.status(400).json({
           success: false,
-          message: `Service ID ${service.vendor_service_id} not found for this vendor.`
+          message: `Service ${serviceId} not found for this vendor`,
         });
       }
 
-      totalPrice += parseFloat(serviceCheck.rows[0].price);
-      totalDuration += parseInt(serviceCheck.rows[0].default_duration_minutes);
+      const service = serviceRow.rows[0];
+      totalPrice += Number(service.price);
+      totalDuration += Number(service.default_duration_minutes || 30);
+      serviceDetails.push(service);
     }
 
-    // Create booking
+    // Insert booking
     const bookingResult = await client.query(
+<<<<<<< HEAD
       `INSERT INTO bookings (
+=======
+        `INSERT INTO bookings (
+>>>>>>> 420b244 (Fixes in auth)
         user_id,
         vendor_id,
         booking_date,
@@ -559,26 +637,48 @@ const createBooking = async (req, res) => {
         payment_status,
         customer_notes,
         created_at,
+<<<<<<< HEAD
         updated_at
       ) VALUES ($1, $2, $3, $4, $5, 'confirmed', 'cash', 'pending', $6, NOW(), NOW())
       RETURNING booking_id, booking_date, booking_time, total_amount`,
       [customerId, vendor_id, booking_date, booking_time, totalPrice, [notes]]
+=======
+        updated_at,
+        status
+      ) VALUES (
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW(), 'active'
+      )
+      RETURNING booking_id`,
+        [
+          customerId,
+          vendor_id,
+          booking_date,
+          timeSlot,
+          totalPrice,
+          'confirmed',
+          payment_method || 'cash',
+          'pending',
+          notes ? [notes] : [],
+        ]
+>>>>>>> 420b244 (Fixes in auth)
     );
 
-    const booking = bookingResult.rows[0];
+    const bookingId = bookingResult.rows[0].booking_id;
 
-    // Add booking services
-    for (const service of services) {
-      const serviceData = await client.query(
-        `SELECT vs.price, sm.service_name, sm.default_duration_minutes
-         FROM vendor_services vs
-         INNER JOIN services_master sm ON vs.service_id = sm.service_id
-         WHERE vs.vendor_service_id = $1`,
-        [service.vendor_service_id]
-      );
+    // ✅ Insert booking services with start_time and end_time
+    let currentStartTime = timeSlot; // Start with booking time
+
+    for (const service of serviceDetails) {
+      // Calculate end time based on duration
+      const [hours, minutes] = currentStartTime.split(':').map(Number);
+      const startMinutes = hours * 60 + minutes;
+      const endMinutes = startMinutes + Number(service.default_duration_minutes || 30);
+      const endHours = Math.floor(endMinutes / 60);
+      const endMins = endMinutes % 60;
+      const endTime = `${String(endHours).padStart(2, '0')}:${String(endMins).padStart(2, '0')}`;
 
       await client.query(
-        `INSERT INTO booking_services (
+          `INSERT INTO booking_services (
           booking_id,
           service_id,
           service_name,
@@ -586,6 +686,7 @@ const createBooking = async (req, res) => {
           start_time,
           end_time,
           duration_minutes,
+<<<<<<< HEAD
           created_at
         ) VALUES ($1, $2, $3, $4, $5, $6,$7, NOW())`,
         [
@@ -597,78 +698,112 @@ const createBooking = async (req, res) => {
           '11:00',
           serviceData.rows[0].default_duration_minutes
         ]
+=======
+          created_at,
+          status
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), 'active')`,
+          [
+            bookingId,
+            service.service_id,
+            service.service_name,
+            service.price,
+            currentStartTime,  // ✅ start_time
+            endTime,           // ✅ end_time
+            service.default_duration_minutes,
+          ]
+>>>>>>> 420b244 (Fixes in auth)
       );
-    }
 
-    // Update vendor metrics
-    await client.query(
-      `UPDATE vendor_metrics 
-       SET total_bookings = COALESCE(total_bookings, 0) + 1,
-           updated_at = NOW()
-       WHERE vendor_id = $1`,
-      [vendor_id]
-    );
+      // Next service starts when this one ends
+      currentStartTime = endTime;
+    }
 
     await client.query('COMMIT');
 
-    // Send notification to vendor
-    try {
-      const vendorFCM = await client.query(
-        'SELECT fcm_token FROM user_profiles WHERE user_id = $1 AND is_current = true',
-        [vendor_id]
-      );
+    // Return complete booking data
+    const bookingData = await client.query(
+        `
+      SELECT 
+        b.booking_id,
+        b.user_id AS customer_id,
+        b.vendor_id,
+        vsd.shop_id,
+        TO_CHAR(b.booking_date, 'YYYY-MM-DD') AS booking_date,
+        b.booking_time AS time_slot,
+        b.booking_status AS status,
+        b.payment_status,
+        b.payment_method,
+        CAST(b.total_amount AS DECIMAL(10,2)) AS total_price,
+        $1::INTEGER AS total_duration,
+        cp.name AS customer_name,
+        cu.phone_number AS customer_phone,
+        vsd.shop_name,
+        TO_CHAR(b.created_at, 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS created_at
+      FROM bookings b
+      JOIN vendor_shop_details vsd ON vsd.user_id = b.vendor_id
+      JOIN users cu ON cu.user_id = b.user_id
+      LEFT JOIN user_profiles cp 
+        ON cp.user_id = cu.user_id AND cp.is_current = true
+      WHERE b.booking_id = $2
+      `,
+        [totalDuration, bookingId]
+    );
 
-      if (vendorFCM.rows[0]?.fcm_token) {
-        await admin.messaging().send({
-          token: vendorFCM.rows[0].fcm_token,
-          notification: {
-            title: 'New Booking Received',
-            body: `New booking for ${booking_date} at ${booking_time}`
-          },
-          data: {
-            type: 'new_booking',
-            booking_id: booking.booking_id.toString()
-          }
-        });
-      }
-    } catch (notifError) {
-      console.error('Notification error:', notifError);
-    }
+    // Add services array
+    const servicesArray = serviceDetails.map(s => ({
+      service_id: s.service_id,
+      service_name: s.service_name,
+      price: Number(s.price),
+      duration: Number(s.default_duration_minutes),
+    }));
 
-    res.status(201).json({
+    const result = {
+      ...bookingData.rows[0],
+      services: servicesArray,
+    };
+
+    return res.status(201).json({
       success: true,
       message: 'Booking created successfully.',
-      data: booking
+      data: result,
     });
 
   } catch (error) {
     await client.query('ROLLBACK');
     console.error('Create booking error:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: 'Error creating booking.',
-      error: error.message
+      error: error.message,
     });
   } finally {
     client.release();
   }
 };
 
-// Get customer bookings
 const getMyBookings = async (req, res) => {
   try {
     const customerId = req.user.userId;
     const { status, page = 1, limit = 10 } = req.query;
     const offset = (page - 1) * limit;
 
+    console.log('📋 Fetching bookings for customer:', customerId);
+    console.log('Status filter:', status);
+    console.log('Page:', page, 'Limit:', limit);
+
+    // ✅ Main query - Fixed JOIN conditions
     let query = `
       SELECT 
         b.booking_id,
-        b.booking_date,
-        b.booking_time,
-        b.total_amount,
-        b.booking_status,
+        b.user_id AS customer_id,
+        b.vendor_id,
+        vsd.shop_id,
+        TO_CHAR(b.booking_date, 'YYYY-MM-DD') AS booking_date,
+        b.booking_time AS time_slot,
+        CAST(b.total_amount AS DECIMAL(10,2)) AS total_price,
+        b.booking_status AS status,
         b.payment_status,
+<<<<<<< HEAD
         b.customer_notes,
         b.created_at,
         vsd.shop_name,
@@ -688,47 +823,120 @@ const getMyBookings = async (req, res) => {
       LEFT JOIN users u ON b.vendor_id = u.user_id
       LEFT JOIN user_profiles up ON u.user_id = up.user_id AND up.is_current = true
       WHERE b.user_id = $1 AND b.status = 'active'
+=======
+        b.payment_method,
+        cp.name AS customer_name,
+        cu.phone_number AS customer_phone,
+        vsd.shop_name,
+        TO_CHAR(b.created_at, 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS created_at,
+        
+        -- ✅ Calculate total duration from booking_services
+        COALESCE(
+          (SELECT SUM(bs.duration_minutes)
+           FROM booking_services bs
+           WHERE bs.booking_id = b.booking_id AND bs.status = 'active'),
+          0
+        ) AS total_duration,
+        
+        -- ✅ Get services array - Fixed JOIN
+        (
+          SELECT COALESCE(json_agg(
+            json_build_object(
+              'service_id', bs.service_id,
+              'service_name', bs.service_name,
+              'price', CAST(bs.service_price AS DECIMAL(10,2)),
+              'duration', bs.duration_minutes,
+              'start_time', bs.start_time::TEXT,
+              'end_time', bs.end_time::TEXT
+            )
+            ORDER BY bs.start_time
+          ), '[]'::json)
+          FROM booking_services bs
+          WHERE bs.booking_id = b.booking_id 
+            AND bs.status = 'active'
+        ) AS services
+
+      FROM bookings b
+      INNER JOIN vendor_shop_details vsd 
+        ON vsd.user_id = b.vendor_id
+      INNER JOIN users cu 
+        ON cu.user_id = b.user_id
+      LEFT JOIN user_profiles cp 
+        ON cp.user_id = cu.user_id AND cp.is_current = true
+
+      WHERE b.user_id = $1
+        AND b.status = 'active'
+>>>>>>> 420b244 (Fixes in auth)
     `;
-    
+
     const params = [customerId];
     let paramCount = 2;
 
+    // Add status filter if provided
     if (status) {
       query += ` AND b.booking_status = $${paramCount}`;
       params.push(status);
       paramCount++;
     }
 
-    // Count total
-    const countQuery = `SELECT COUNT(*) FROM (${query}) as total_count`;
-    const countResult = await db.query(countQuery, params);
-    const total = parseInt(countResult.rows[0].count);
+    console.log('Query params:', params);
+
+    // Get total count for pagination
+    const countQuery = `
+      SELECT COUNT(*) 
+      FROM bookings b
+      WHERE b.user_id = $1 
+        AND b.status = 'active'
+      ${status ? `AND b.booking_status = $${params.length > 1 ? 2 : 1}` : ''}
+    `;
+
+    const countResult = await db.query(
+        countQuery,
+        status ? [customerId, status] : [customerId]
+    );
+    const total = parseInt(countResult.rows[0].count, 10);
+
+    console.log('Total bookings found:', total);
 
     // Add pagination
-    query += ` ORDER BY b.booking_date DESC, b.booking_time DESC LIMIT $${paramCount} OFFSET $${paramCount + 1}`;
-    params.push(limit, offset);
+    query += `
+      ORDER BY b.booking_date DESC, b.booking_time DESC
+      LIMIT $${paramCount} OFFSET $${paramCount + 1}
+    `;
+    params.push(parseInt(limit), parseInt(offset));
 
+    console.log('Final query params:', params);
+
+    // Execute query
     const result = await db.query(query, params);
 
-    res.json({
+    console.log('Bookings retrieved:', result.rows.length);
+
+    return res.json({
       success: true,
+      message: result.rows.length > 0
+          ? 'Bookings loaded successfully'
+          : 'No bookings found',
       data: {
         bookings: result.rows,
         pagination: {
           total,
-          page: parseInt(page),
-          limit: parseInt(limit),
-          totalPages: Math.ceil(total / limit)
-        }
-      }
+          page: parseInt(page, 10),
+          limit: parseInt(limit, 10),
+          totalPages: Math.ceil(total / limit),
+        },
+      },
     });
 
   } catch (error) {
-    console.error('Get bookings error:', error);
-    res.status(500).json({
+    console.error('❌ Get bookings error:', error);
+    console.error('Error details:', error.message);
+    console.error('Stack:', error.stack);
+
+    return res.status(500).json({
       success: false,
       message: 'Error fetching bookings.',
-      error: error.message
+      error: error.message,
     });
   }
 };
@@ -738,9 +946,8 @@ const getBookingDetails = async (req, res) => {
   try {
     const customerId = req.user.userId;
     const { bookingId } = req.params;
-
     const booking = await db.query(
-      `SELECT 
+        `SELECT 
         b.*,
         vsd.shop_name,
         vsd.shop_address,
@@ -760,7 +967,7 @@ const getBookingDetails = async (req, res) => {
       LEFT JOIN users u ON b.vendor_id = u.user_id
       LEFT JOIN user_profiles up ON u.user_id = up.user_id AND up.is_current = true
       WHERE b.booking_id = $1 AND b.user_id = $2 AND b.status = 'active'`,
-      [bookingId, customerId]
+        [bookingId, customerId]
     );
 
     if (booking.rows.length === 0) {
@@ -772,14 +979,15 @@ const getBookingDetails = async (req, res) => {
 
     // Get booking services
     const services = await db.query(
-      `SELECT * FROM booking_services 
+        `SELECT * FROM booking_services 
        WHERE booking_id = $1 AND status = 'active'
        ORDER BY created_at`,
-      [bookingId]
+        [bookingId]
     );
 
     res.json({
       success: true,
+      message: "Loaded",
       data: {
         ...booking.rows[0],
         services: services.rows
@@ -812,10 +1020,14 @@ const cancelBooking = async (req, res) => {
 
     // Check if booking exists and belongs to customer
     const booking = await db.query(
-      `SELECT booking_id, vendor_id, booking_status, booking_date 
+        `SELECT booking_id, vendor_id, booking_status, booking_date 
        FROM bookings 
        WHERE booking_id = $1 AND user_id = $2 AND status = 'active'`,
+<<<<<<< HEAD
       [bookingId, customerId]
+=======
+        [bookingId, customerId]
+>>>>>>> 420b244 (Fixes in auth)
     );
 
     if (booking.rows.length === 0) {
@@ -841,29 +1053,29 @@ const cancelBooking = async (req, res) => {
 
     // Update booking
     await db.query(
-      `UPDATE bookings 
+        `UPDATE bookings 
        SET booking_status = 'cancelled',
            cancellation_reason = $1,
            cancelled_by = 'customer',
            updated_at = NOW()
        WHERE booking_id = $2`,
-      [cancellation_reason, bookingId]
+        [cancellation_reason, bookingId]
     );
 
     // Update vendor metrics
     await db.query(
-      `UPDATE vendor_metrics 
+        `UPDATE vendor_metrics 
        SET cancelled_bookings = COALESCE(cancelled_bookings, 0) + 1,
            updated_at = NOW()
        WHERE vendor_id = $1`,
-      [booking.rows[0].vendor_id]
+        [booking.rows[0].vendor_id]
     );
 
     // Send notification to vendor
     try {
       const vendorFCM = await db.query(
-        'SELECT fcm_token FROM user_profiles WHERE user_id = $1 AND is_current = true',
-        [booking.rows[0].vendor_id]
+          'SELECT fcm_token FROM user_profiles WHERE user_id = $1 AND is_current = true',
+          [booking.rows[0].vendor_id]
       );
 
       if (vendorFCM.rows[0]?.fcm_token) {
@@ -885,6 +1097,7 @@ const cancelBooking = async (req, res) => {
 
     res.json({
       success: true,
+      message: "Loaded",
       message: 'Booking cancelled successfully.'
     });
 
@@ -925,9 +1138,15 @@ const addReview = async (req, res) => {
 
     // Check if booking exists and is completed
     const booking = await db.query(
+<<<<<<< HEAD
       `SELECT vendor_id, booking_status FROM bookings 
        WHERE booking_id = $1 AND user_id = $2 AND status = 'active'`,
       [booking_id, customerId]
+=======
+        `SELECT vendor_id, booking_status FROM bookings 
+       WHERE booking_id = $1 AND user_id = $2 AND status = 'active'`,
+        [booking_id, customerId]
+>>>>>>> 420b244 (Fixes in auth)
     );
 
     if (booking.rows.length === 0) {
@@ -946,8 +1165,8 @@ const addReview = async (req, res) => {
 
     // Check if review already exists
     const existingReview = await db.query(
-      'SELECT review_id FROM reviews WHERE booking_id = $1 AND status = $2',
-      [booking_id, 'active']
+        'SELECT review_id FROM reviews WHERE booking_id = $1 AND status = $2',
+        [booking_id, 'active']
     );
 
     if (existingReview.rows.length > 0) {
@@ -959,7 +1178,7 @@ const addReview = async (req, res) => {
 
     // Add review
     const result = await db.query(
-      `INSERT INTO reviews (
+        `INSERT INTO reviews (
         booking_id,
         customer_id,
         vendor_id,
@@ -968,14 +1187,14 @@ const addReview = async (req, res) => {
         created_at
       ) VALUES ($1, $2, $3, $4, $5, NOW())
       RETURNING review_id`,
-      [booking_id, customerId, booking.rows[0].vendor_id, rating, review_text]
+        [booking_id, customerId, booking.rows[0].vendor_id, rating, review_text]
     );
 
     // Update vendor metrics
     const metrics = await db.query(
-      `SELECT average_rating, total_reviews FROM vendor_metrics 
+        `SELECT average_rating, total_reviews FROM vendor_metrics 
        WHERE vendor_id = $1`,
-      [booking.rows[0].vendor_id]
+        [booking.rows[0].vendor_id]
     );
 
     const currentRating = parseFloat(metrics.rows[0]?.average_rating || 0);
@@ -983,12 +1202,12 @@ const addReview = async (req, res) => {
     const newAverageRating = ((currentRating * currentReviews) + rating) / (currentReviews + 1);
 
     await db.query(
-      `UPDATE vendor_metrics 
+        `UPDATE vendor_metrics 
        SET average_rating = $1,
            total_reviews = total_reviews + 1,
            updated_at = NOW()
        WHERE vendor_id = $2`,
-      [newAverageRating, booking.rows[0].vendor_id]
+        [newAverageRating, booking.rows[0].vendor_id]
     );
 
     res.status(201).json({
@@ -1017,7 +1236,7 @@ const addReview = async (req, res) => {
 const getAllCategories = async (req, res) => {
   try {
     const result = await db.query(
-      `SELECT 
+        `SELECT 
         category_id,
         category_name,
         description,
@@ -1033,6 +1252,7 @@ const getAllCategories = async (req, res) => {
 
     res.json({
       success: true,
+      message:"Hello",
       data: result.rows
     });
 
@@ -1052,7 +1272,7 @@ const getServicesByCategory = async (req, res) => {
     const { category } = req.params;
 
     const result = await db.query(
-      `SELECT 
+        `SELECT 
         service_id,
         service_name,
         service_description as description,
@@ -1063,11 +1283,12 @@ const getServicesByCategory = async (req, res) => {
       FROM services_master
       WHERE category = $1 AND status = 'active' AND is_available = true
       ORDER BY service_name ASC`,
-      [category]
+        [category]
     );
 
     res.json({
       success: true,
+      message:"Hello",
       data: result.rows
     });
 
@@ -1093,25 +1314,26 @@ const getNotifications = async (req, res) => {
     const offset = (page - 1) * limit;
 
     const result = await db.query(
-      `SELECT * FROM notifications 
+        `SELECT * FROM notifications 
        WHERE user_id = $1 
        ORDER BY created_at DESC 
        LIMIT $2 OFFSET $3`,
-      [userId, limit, offset]
+        [userId, limit, offset]
     );
 
     const total = await db.query(
-      'SELECT COUNT(*) FROM notifications WHERE user_id = $1',
-      [userId]
+        'SELECT COUNT(*) FROM notifications WHERE user_id = $1',
+        [userId]
     );
 
     const unreadCount = await db.query(
-      'SELECT COUNT(*) FROM notifications WHERE user_id = $1 AND is_read = false',
-      [userId]
+        'SELECT COUNT(*) FROM notifications WHERE user_id = $1 AND is_read = false',
+        [userId]
     );
 
     res.json({
       success: true,
+      message: "Loaded",
       data: {
         notifications: result.rows,
         unread_count: parseInt(unreadCount.rows[0].count),
@@ -1141,14 +1363,15 @@ const markNotificationRead = async (req, res) => {
     const { notificationId } = req.params;
 
     await db.query(
-      `UPDATE notifications 
+        `UPDATE notifications 
        SET is_read = true, read_at = NOW()
        WHERE notification_id = $1 AND user_id = $2`,
-      [notificationId, userId]
+        [notificationId, userId]
     );
 
     res.json({
       success: true,
+      message: "Loaded",
       message: 'Notification marked as read.'
     });
 
@@ -1168,14 +1391,15 @@ const markAllNotificationsRead = async (req, res) => {
     const userId = req.user.userId;
 
     await db.query(
-      `UPDATE notifications 
+        `UPDATE notifications 
        SET is_read = true, read_at = NOW()
        WHERE user_id = $1 AND is_read = false`,
-      [userId]
+        [userId]
     );
 
     res.json({
       success: true,
+      message: "Loaded",
       message: 'All notifications marked as read.'
     });
 
@@ -1203,14 +1427,15 @@ const updateFCMToken = async (req, res) => {
     }
 
     await db.query(
-      `UPDATE user_profiles 
+        `UPDATE user_profiles 
        SET fcm_token = $1, device_id = $2, updated_at = NOW()
        WHERE user_id = $3 AND is_current = true`,
-      [fcm_token, device_id, userId]
+        [fcm_token, device_id, userId]
     );
 
     res.json({
       success: true,
+      message: "Loaded",
       message: 'FCM token updated successfully.'
     });
 

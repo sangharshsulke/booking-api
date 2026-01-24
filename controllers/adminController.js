@@ -2633,6 +2633,186 @@ const getVendorServicesForBooking = async (req, res) => {
     });
   }
 };
+// ============================================
+// NOTIFICATION MANAGEMENT
+// ============================================
+
+const sendNotification = async (req, res) => {
+  const client = await db.pool.connect();
+
+  try {
+    const { title, message, recipient_type, recipient_id } = req.body;
+
+    console.log('📨 Send notification request:', { title, recipient_type, recipient_id });
+
+    // Validation
+    if (!title || !title.trim() || !message || !message.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Title and message are required'
+      });
+    }
+
+    if (!['all_users', 'all_vendors', 'specific_user', 'specific_vendor'].includes(recipient_type)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid recipient type'
+      });
+    }
+
+    if ((recipient_type === 'specific_user' || recipient_type === 'specific_vendor') && !recipient_id) {
+      return res.status(400).json({
+        success: false,
+        message: 'Recipient ID is required for specific user/vendor'
+      });
+    }
+
+    await client.query('BEGIN');
+
+    let recipientUsers = [];
+
+    // Get recipients based on type
+    if (recipient_type === 'all_users') {
+      const result = await client.query(
+          `SELECT user_id FROM users WHERE user_type = 'CUSTOMER' AND status = 'active'`
+      );
+      recipientUsers = result.rows;
+    } else if (recipient_type === 'all_vendors') {
+      const result = await client.query(
+          `SELECT user_id FROM users WHERE user_type = 'VENDOR' AND status = 'active'`
+      );
+      recipientUsers = result.rows;
+    } else if (recipient_type === 'specific_user') {
+      const result = await client.query(
+          `SELECT user_id FROM users WHERE user_id = $1 AND status = 'active'`,
+          [recipient_id]
+      );
+      if (result.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({
+          success: false,
+          message: 'User not found'
+        });
+      }
+      recipientUsers = result.rows;
+    } else if (recipient_type === 'specific_vendor') {
+      const result = await client.query(
+          `SELECT user_id FROM users WHERE user_id = $1 AND user_type = 'VENDOR' AND status = 'active'`,
+          [recipient_id]
+      );
+      if (result.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({
+          success: false,
+          message: 'Vendor not found'
+        });
+      }
+      recipientUsers = result.rows;
+    }
+
+    if (recipientUsers.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({
+        success: false,
+        message: 'No recipients found'
+      });
+    }
+
+    // Insert notifications for all recipients
+    for (const recipient of recipientUsers) {
+      await client.query(
+          `INSERT INTO notifications (
+          user_id, title, message, notification_type, is_read, created_at
+        ) VALUES ($1, $2, $3, 'admin', false, NOW())`,
+          [recipient.user_id, title.trim(), message.trim()]
+      );
+    }
+
+    await client.query('COMMIT');
+
+    // Try to send FCM push notifications (optional, won't fail if error)
+    try {
+      const admin = require('../config/firebase');
+
+      for (const recipient of recipientUsers) {
+        const fcmResult = await client.query(
+            'SELECT fcm_token FROM user_profiles WHERE user_id = $1 AND is_current = true AND fcm_token IS NOT NULL',
+            [recipient.user_id]
+        );
+
+        if (fcmResult.rows.length > 0 && fcmResult.rows[0].fcm_token) {
+          await admin.messaging().send({
+            token: fcmResult.rows[0].fcm_token,
+            notification: {
+              title: title.trim(),
+              body: message.trim()
+            },
+            data: {
+              type: 'admin_notification',
+              title: title.trim(),
+              message: message.trim()
+            }
+          });
+        }
+      }
+    } catch (fcmError) {
+      console.error('FCM notification error (non-critical):', fcmError);
+    }
+
+    console.log(`✅ Notification sent to ${recipientUsers.length} recipient(s)`);
+
+    res.json({
+      success: true,
+      message: `Notification sent successfully to ${recipientUsers.length} recipient(s)`,
+      data: {
+        recipients_count: recipientUsers.length
+      }
+    });
+
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('❌ Error sending notification:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  } finally {
+    client.release();
+  }
+};
+
+// Add this function for debugging
+const checkUserFCMTokens = async (req, res) => {
+  try {
+    const result = await db.query(`
+      SELECT 
+        u.user_id,
+        u.phone_number,
+        u.user_type,
+        up.fcm_token,
+        up.device_id,
+        up.updated_at as token_updated_at
+      FROM users u
+      LEFT JOIN user_profiles up ON u.user_id = up.user_id AND up.is_current = true
+      WHERE u.status = 'active' AND up.fcm_token IS NOT NULL
+      ORDER BY up.updated_at DESC
+      LIMIT 20
+    `);
+
+    res.json({
+      success: true,
+      data: {
+        users_with_tokens: result.rows.length,
+        users: result.rows
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
 
 module.exports = {
   getAllUsers,
@@ -2669,5 +2849,7 @@ module.exports = {
   createBooking,
   updateBookingStatus,
   cancelBooking,
-  getVendorServicesForBooking
+  getVendorServicesForBooking,
+  sendNotification,
+  checkUserFCMTokens
 };

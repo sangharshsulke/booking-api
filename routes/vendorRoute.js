@@ -8,6 +8,50 @@ router.use(verifyToken);
 router.use(isVendor);
 
 // ============================================
+// VENDOR PROFILE MANAGEMENT
+// ============================================
+
+// Get vendor profile
+router.get('/profile', vendorController.getVendorProfile);
+
+// Update vendor profile
+router.put('/profile', vendorController.updateVendorProfile);
+
+// ============================================
+// SHOP MANAGEMENT
+// ============================================
+
+// Get shop details
+router.get('/shop', vendorController.getVendorShop);
+
+// Create or update shop
+router.post('/shop', vendorController.createOrUpdateVendorShop);
+router.put('/shop', vendorController.createOrUpdateVendorShop);
+
+// Update specific shop settings
+router.put('/shop/operating-hours', vendorController.updateShopOperatingHours);
+router.put('/shop/capacity', vendorController.updateShopCapacity);
+
+// ============================================
+// IMAGE MANAGEMENT
+// ============================================
+
+// Upload shop profile image
+router.post('/shop/profile-image', vendorController.uploadShopProfileImage);
+
+// Upload shop gallery images
+router.post('/shop/gallery-images', vendorController.uploadShopGalleryImages);
+
+// Get all shop images
+router.get('/shop/images', vendorController.getVendorImages);
+
+// Delete shop image
+router.delete('/shop/images/:image_id', vendorController.deleteVendorImage);
+
+// Set primary gallery image
+router.put('/shop/images/:image_id/primary', vendorController.setPrimaryImage);
+
+// ============================================
 // DASHBOARD
 // ============================================
 
@@ -39,16 +83,35 @@ router.patch('/services/:service_id/availability', vendorController.toggleServic
 router.delete('/services/:service_id', vendorController.deleteVendorService);
 
 // ============================================
-// IMAGE MANAGEMENT
+// BOOKING MANAGEMENT
 // ============================================
 
-// Upload images
-router.post('/images', vendorController.uploadShopImages);
+// Get all bookings (with filters)
+router.get('/bookings', vendorController.getVendorBookings);
 
-// Get images
-router.get('/images', vendorController.getVendorImages);
+// Get booking details
+router.get('/bookings/:bookingId', vendorController.getBookingDetails);
 
-// Delete image
-router.delete('/images/:image_id', vendorController.deleteVendorImage);
+// Accept booking
+router.put('/bookings/:bookingId/accept', vendorController.acceptBooking);
+
+// Reject booking
+router.put('/bookings/:bookingId/reject', vendorController.rejectBooking);
+
+// Complete booking
+router.put('/bookings/:bookingId/complete', vendorController.completeBooking);
+
+// Mark as no-show
+router.put('/bookings/:bookingId/no-show', vendorController.markNoShow);
+
+// Create offline booking (walk-in customer)
+router.post('/bookings/offline', vendorController.createOfflineBooking);
+
+// ============================================
+// REVIEWS
+// ============================================
+
+// Get vendor reviews
+router.get('/reviews', vendorController.getVendorReviews);
 
 module.exports = router;

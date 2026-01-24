@@ -8,10 +8,10 @@ const { verifyToken } = require('../middleware/auth');
 // ============================================
 
 // // Send OTP (Firebase handles this on client side)
-// router.post('/send-otp', authController.sendOTP);
+router.post('/send-otp', authController.sendOTP);
 
 // // Verify OTP and Register/Login
-// router.post('/verify-otp', authController.verifyOTP);
+router.post('/verify-otp', authController.verifyOTP);
 
 // ============================================
 // PUBLIC ROUTES - TRADITIONAL (Optional)
