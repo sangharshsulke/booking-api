@@ -19,7 +19,7 @@ jobs:
       with:
         host: ${{ secrets.SERVER_IP }}
         username: root              # ✅ hardcoded (important)
-        port: 2222                    # ✅ explicitly set
+        port: 22                    # ✅ explicitly set
         key: ${{ secrets.SSH_PRIVATE_KEY }}
         debug: true                 # ✅ must-have
         script: |
