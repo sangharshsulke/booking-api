@@ -11,7 +11,160 @@ const fs = require('fs');
 // 3. Fixed all foreign key references to match actual DB schema
 // 4. Added proper table joins and aliases
 // ============================================
+// ============================================
+// FIXED DASHBOARD STATS - Matches actual DB schema
+// ============================================
+const getDashboardStats = async (req, res) => {
+  try {
+    const today = new Date().toISOString().split('T')[0];
 
+    // User Statistics by Type (using 'role' column, not user_type)
+    const userStats = await db.query(`
+      SELECT 
+        user_type as user_type,
+        COUNT(*) as count
+      FROM users 
+      WHERE status = 'active'
+      GROUP BY user_type
+    `);
+
+    // Overall Booking Statistics (using 'status' column, not deleted_at)
+    const bookingStats = await db.query(`
+      SELECT 
+        COUNT(*) as total_bookings,
+        COUNT(CASE WHEN booking_status = 'completed' THEN 1 END) as completed_bookings,
+        COUNT(CASE WHEN booking_status = 'cancelled' THEN 1 END) as cancelled_bookings,
+        COUNT(CASE WHEN booking_status = 'confirmed' THEN 1 END) as pending_bookings,
+        COALESCE(SUM(CASE WHEN payment_status = 'paid' THEN total_amount ELSE 0 END), 0) as total_revenue
+      FROM bookings 
+      WHERE status = 'active'
+    `);
+
+    // Today's Statistics (fixed - separate queries for bookings and users)
+    const todayBookingStats = await db.query(`
+      SELECT 
+        COUNT(*) as bookings,
+        COALESCE(SUM(CASE WHEN payment_status = 'paid' THEN total_amount ELSE 0 END), 0) as revenue,
+        COUNT(CASE WHEN booking_status = 'completed' THEN 1 END) as completed,
+        COUNT(CASE WHEN booking_status = 'cancelled' THEN 1 END) as cancelled
+      FROM bookings
+      WHERE created_at::date = $1 AND status = 'active'
+    `, [today]);
+
+    const todayUserStats = await db.query(`
+      SELECT 
+        COUNT(CASE WHEN user_type = 'CUSTOMER' THEN 1 END) as new_customers,
+        COUNT(CASE WHEN user_type = 'VENDOR' THEN 1 END) as new_vendors
+      FROM users
+      WHERE created_at::date = $1 AND status = 'active'
+    `, [today]);
+
+    // Combine today's stats
+    const todayStats = {
+      ...todayBookingStats.rows[0],
+      ...todayUserStats.rows[0]
+    };
+
+    // Pending Vendors (using verification_status, not is_approved)
+    const pendingVendors = await db.query(`
+      SELECT COUNT(DISTINCT u.user_id) as count
+      FROM users u
+      LEFT JOIN vendor_shop_details vsd ON u.user_id = vsd.user_id
+      WHERE u.user_type = 'VENDOR' 
+        AND u.status = 'active'
+        AND (vsd.verification_status = 'pending' OR vsd.verification_status IS NULL)
+    `);
+
+    // Recent Users (last 10) - using is_current for user_profiles
+    const recentUsers = await db.query(`
+      SELECT 
+        u.user_id,
+        up.name,
+        u.user_type,
+        u.created_at
+      FROM users u
+      LEFT JOIN user_profiles up ON u.user_id = up.user_id AND up.is_current = true
+      WHERE u.status = 'active'
+      ORDER BY u.created_at DESC
+      LIMIT 10
+    `);
+
+    // Recent Bookings (last 10) - using status = 'active'
+    const recentBookings = await db.query(`
+      SELECT 
+        b.booking_id,
+        b.booking_date,
+        b.total_amount,
+        b.booking_status,
+        b.payment_status,
+        b.created_at,
+        cu.email as customer_email,
+        cup.name as customer_name,
+        v.email as vendor_email,
+        vup.name as vendor_name,
+        vsd.shop_name
+      FROM bookings b
+      JOIN users cu ON b.user_id = cu.user_id
+      LEFT JOIN user_profiles cup ON cu.user_id = cup.user_id AND cup.is_current = true
+      JOIN users v ON b.vendor_id = v.user_id
+      LEFT JOIN user_profiles vup ON v.user_id = vup.user_id AND vup.is_current = true
+      LEFT JOIN vendor_shop_details vsd ON v.user_id = vsd.user_id
+      WHERE b.status = 'active'
+      ORDER BY b.created_at DESC
+      LIMIT 10
+    `);
+
+    // Monthly Revenue Trend (last 6 months) - using status = 'active'
+    const monthlyRevenue = await db.query(`
+      SELECT 
+        TO_CHAR(booking_date, 'Mon YYYY') as month,
+        COALESCE(SUM(CASE WHEN payment_status = 'paid' THEN total_amount ELSE 0 END), 0) as revenue,
+        COUNT(*) as bookings
+      FROM bookings
+      WHERE status = 'active'
+        AND booking_date >= CURRENT_DATE - INTERVAL '6 months'
+      GROUP BY TO_CHAR(booking_date, 'YYYY-MM'), TO_CHAR(booking_date, 'Mon YYYY')
+      ORDER BY TO_CHAR(booking_date, 'YYYY-MM') DESC
+      LIMIT 6
+    `);
+
+    // Service Categories Count - using status = 'active'
+    const categoriesCount = await db.query(`
+      SELECT COUNT(*) as count
+      FROM service_categories
+      WHERE status = 'active'
+    `);
+
+    // Services Count - using status = 'active'
+    const servicesCount = await db.query(`
+      SELECT COUNT(*) as count
+      FROM services_master
+      WHERE status = 'active'
+    `);
+
+    res.json({
+      success: true,
+      data: {
+        userStats: userStats.rows,
+        bookingStats: bookingStats.rows[0],
+        todayStats: todayStats,
+        pendingVendors: Number(pendingVendors.rows[0]?.count || 0),
+        recentUsers: recentUsers.rows,
+        recentBookings: recentBookings.rows,
+        monthlyRevenue: monthlyRevenue.rows,
+        categoriesCount: Number(categoriesCount.rows[0]?.count || 0),
+        servicesCount: Number(servicesCount.rows[0]?.count || 0),
+      },
+    });
+  } catch (error) {
+    console.error('Dashboard stats error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch dashboard stats.',
+      error: error.message,
+    });
+  }
+};
 // ============================================
 // USER MANAGEMENT
 // ============================================
@@ -204,53 +357,73 @@ const createAdmin = async (req, res) => {
 // Update user status (activate/deactivate)
 const updateUserStatus = async (req, res) => {
   try {
-    const { id } = req.params;
+    const { userId } = req.params;
     const { status } = req.body;
 
     if (!['active', 'inactive', 'suspended'].includes(status)) {
       return res.status(400).json({
         success: false,
-        message: 'Invalid status. Must be active, inactive, or suspended.'
-      });
-    }
-
-    // Check if user exists and is not SUPERADMIN
-    const userCheck = await db.query(
-      'SELECT user_type FROM users WHERE user_id = $1',
-      [id]
-    );
-
-    if (userCheck.rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found.'
-      });
-    }
-
-    if (userCheck.rows[0].user_type === 'SUPERADMIN') {
-      return res.status(403).json({
-        success: false,
-        message: 'Cannot modify SUPERADMIN status.'
+        message: 'Invalid status. Must be active, inactive, or suspended.',
       });
     }
 
     await db.query(
-      'UPDATE users SET status = $1 WHERE user_id = $2',
-      [status, id]
+        `UPDATE users SET status = $1, updated_at = NOW() WHERE user_id = $2`,
+        [status, userId]
     );
 
-    res.json({
-      success: true,
-      message: `User status updated to ${status}.`
-    });
+    // ── Send deactivation notification ──────────────────────────────
+    if (status === 'inactive') {
+      try {
+        const profileRow = await db.query(
+            `SELECT up.fcm_token, up.name 
+           FROM user_profiles up 
+           WHERE up.user_id = $1 AND up.is_current = true`,
+            [userId]
+        );
 
+        const fcmToken = profileRow.rows[0]?.fcm_token;
+
+        // ── FIX: use user_id (not vendor_id) for notifications table ──
+        await db.query(
+            `INSERT INTO notifications (user_id, title, message, notification_type, is_read, created_at)
+           VALUES ($1, $2, $3, 'account_deactivated', false, NOW())`,
+            [
+              userId,
+              'Account Deactivated',
+              'Your account has been deactivated by the admin. Please contact support for assistance.',
+            ]
+        ).catch(e => console.warn('⚠️ Notification insert failed:', e.message));
+
+        // Send FCM push
+        if (fcmToken) {
+          try {
+            const admin = require('../config/firebase');
+            if (admin.apps.length) {
+              await admin.messaging().send({
+                token: fcmToken,
+                notification: {
+                  title: '⚠️ Account Deactivated',
+                  body: 'Your account has been deactivated. Contact support for help.',
+                },
+                data: { type: 'ACCOUNT_DEACTIVATED' },
+                android: { priority: 'high' },
+              });
+              console.log(`✅ FCM deactivation push sent to user ${userId}`);
+            }
+          } catch (fcmErr) {
+            console.warn('⚠️ FCM send failed (non-critical):', fcmErr.message);
+          }
+        }
+      } catch (notifErr) {
+        console.warn('⚠️ Deactivation notification block failed:', notifErr.message);
+      }
+    }
+
+    res.json({ success: true, message: `User status updated to ${status}` });
   } catch (error) {
-    console.error('Update user status error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error updating user status.',
-      error: error.message
-    });
+    console.error('❌ updateUserStatus error:', error);
+    res.status(500).json({ success: false, message: 'Error updating user status.', error: error.message });
   }
 };
 
@@ -307,18 +480,27 @@ const getAllVendors = async (req, res) => {
     const offset = (page - 1) * limit;
 
     let query = `
-      SELECT u.user_id, u.phone_number, u.email, u.status as user_status, u.created_at,
-             up.name, up.city as user_city, up.state,
-             vs.shop_id, vs.shop_name, vs.shop_address, vs.city as shop_city, 
-             vs.verification_status, vs.verified_at, vs.admin_comments,
-             vm.total_bookings, vm.average_rating, vm.total_reviews, vm.total_revenue
+      SELECT 
+        u.user_id, u.phone_number, u.email, u.status as user_status, u.created_at,
+        up.name, up.city as user_city, up.state as user_state,
+        vs.shop_id, vs.shop_name, vs.shop_address, 
+        vs.city as shop_city, vs.state as shop_state,
+        vs.latitude, vs.longitude,
+        vs.open_time, vs.close_time,
+        vs.break_start_time, vs.break_end_time,
+        vs.weekly_holiday,
+        vs.no_of_seats, vs.no_of_workers,
+        vs.verification_status, vs.verified_at, vs.admin_comments,
+        vs.business_license, vs.tax_number,
+        vs.bank_account_number, vs.bank_ifsc_code,
+        vm.total_bookings, vm.average_rating, vm.total_reviews, vm.total_revenue
       FROM users u
       LEFT JOIN user_profiles up ON u.user_id = up.user_id AND up.is_current = true
       LEFT JOIN vendor_shop_details vs ON u.user_id = vs.user_id
       LEFT JOIN vendor_metrics vm ON u.user_id = vm.vendor_id
       WHERE u.user_type = 'VENDOR'
     `;
-    
+
     const params = [];
     let paramCount = 1;
 
@@ -327,25 +509,21 @@ const getAllVendors = async (req, res) => {
       params.push(status);
       paramCount++;
     }
-
     if (city) {
-      query += ` AND vs.city = $${paramCount}`;
-      params.push(city);
+      query += ` AND vs.city ILIKE $${paramCount}`;
+      params.push(`%${city}%`);
       paramCount++;
     }
-
     if (search) {
       query += ` AND (up.name ILIKE $${paramCount} OR vs.shop_name ILIKE $${paramCount} OR u.phone_number ILIKE $${paramCount})`;
       params.push(`%${search}%`);
       paramCount++;
     }
 
-    // Count total
     const countQuery = `SELECT COUNT(*) FROM (${query}) as total_count`;
     const countResult = await db.query(countQuery, params);
     const total = parseInt(countResult.rows[0].count);
 
-    // Get paginated results
     query += ` ORDER BY u.created_at DESC LIMIT $${paramCount} OFFSET $${paramCount + 1}`;
     params.push(limit, offset);
 
@@ -355,22 +533,12 @@ const getAllVendors = async (req, res) => {
       success: true,
       data: {
         vendors: result.rows,
-        pagination: {
-          total,
-          page: parseInt(page),
-          limit: parseInt(limit),
-          totalPages: Math.ceil(total / limit)
-        }
+        pagination: { total, page: parseInt(page), limit: parseInt(limit), totalPages: Math.ceil(total / limit) }
       }
     });
-
   } catch (error) {
     console.error('Get all vendors error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error fetching vendors.',
-      error: error.message
-    });
+    res.status(500).json({ success: false, message: 'Error fetching vendors.', error: error.message });
   }
 };
 
@@ -510,6 +678,57 @@ const updateVendorVerification = async (req, res) => {
     );
 
     console.log('Vendor shop verification updated:', result.rows[0]);
+    // ── Send in-app notification to vendor ──────────────────────────
+    const isApproved = finalStatus === 'approved';
+    const isRejected = finalStatus === 'rejected';
+
+    if (isApproved || isRejected) {
+      const notifTitle = isApproved
+          ? '🎉 Shop Approved!'
+          : '❌ Shop Verification Update';
+
+      const notifMessage = isApproved
+          ? 'Congratulations! Your shop has been approved. You can now start accepting bookings.'
+          : `Your shop verification was not approved. ${admin_comments ? 'Reason: ' + admin_comments : 'Please contact support for more details.'}`;
+
+      try {
+        // Insert DB notification
+        await db.query(
+            `INSERT INTO notifications (user_id, title, message, notification_type, is_read, created_at)
+           VALUES ($1, $2, $3, 'shop_verification', false, NOW())`,
+            [id, notifTitle, notifMessage]
+        );
+
+        // Send FCM push notification if token exists
+        try {
+          const admin = require('../config/firebase');
+          const fcmResult = await db.query(
+              `SELECT fcm_token FROM user_profiles 
+             WHERE user_id = $1 AND is_current = true AND fcm_token IS NOT NULL`,
+              [id]
+          );
+
+          if (fcmResult.rows.length > 0 && fcmResult.rows[0].fcm_token) {
+            await admin.messaging().send({
+              token: fcmResult.rows[0].fcm_token,
+              notification: { title: notifTitle, body: notifMessage },
+              data: {
+                type: 'shop_verification',
+                status: finalStatus,
+                title: notifTitle,
+                message: notifMessage,
+              },
+            });
+            console.log('✅ FCM notification sent to vendor:', id);
+          }
+        } catch (fcmError) {
+          console.error('FCM send error (non-critical):', fcmError.message);
+        }
+      } catch (notifError) {
+        console.error('Notification insert error (non-critical):', notifError.message);
+      }
+    }
+
 
     res.json({
       success: true,
@@ -571,62 +790,62 @@ const updateDocumentVerification = async (req, res) => {
 };
 
 // Get dashboard statistics
-const getDashboardStats = async (req, res) => {
-  try {
-    // Total users by type
-    const userStats = await db.query(`
-      SELECT user_type, COUNT(*) as count
-      FROM users
-      WHERE status = 'active'
-      GROUP BY user_type
-    `);
-
-    // Pending vendor verifications
-    const pendingVendors = await db.query(`
-      SELECT COUNT(*) as count
-      FROM vendor_shop_details
-      WHERE verification_status = 'pending'
-    `);
-
-    // Total bookings
-    const bookingStats = await db.query(`
-      SELECT 
-        COUNT(*) as total_bookings,
-        SUM(CASE WHEN booking_status = 'completed' THEN 1 ELSE 0 END) as completed_bookings,
-        SUM(CASE WHEN booking_status = 'cancelled' THEN 1 ELSE 0 END) as cancelled_bookings,
-        COALESCE(SUM(total_amount), 0) as total_revenue
-      FROM bookings
-      WHERE deleted_at IS NULL
-    `);
-
-    // Recent activity
-    const recentUsers = await db.query(`
-      SELECT u.user_id, up.name, u.user_type, u.created_at
-      FROM users u
-      LEFT JOIN user_profiles up ON u.user_id = up.user_id AND up.is_current = true
-      ORDER BY u.created_at DESC
-      LIMIT 5
-    `);
-
-    res.json({
-      success: true,
-      data: {
-        userStats: userStats.rows,
-        pendingVendors: parseInt(pendingVendors.rows[0].count),
-        bookingStats: bookingStats.rows[0],
-        recentUsers: recentUsers.rows
-      }
-    });
-
-  } catch (error) {
-    console.error('Get dashboard stats error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error fetching dashboard statistics.',
-      error: error.message
-    });
-  }
-};
+// const getDashboardStats = async (req, res) => {
+//   try {
+//     // Total users by type
+//     const userStats = await db.query(`
+//       SELECT user_type, COUNT(*) as count
+//       FROM users
+//       WHERE status = 'active'
+//       GROUP BY user_type
+//     `);
+//
+//     // Pending vendor verifications
+//     const pendingVendors = await db.query(`
+//       SELECT COUNT(*) as count
+//       FROM vendor_shop_details
+//       WHERE verification_status = 'pending'
+//     `);
+//
+//     // Total bookings
+//     const bookingStats = await db.query(`
+//       SELECT
+//         COUNT(*) as total_bookings,
+//         SUM(CASE WHEN booking_status = 'completed' THEN 1 ELSE 0 END) as completed_bookings,
+//         SUM(CASE WHEN booking_status = 'cancelled' THEN 1 ELSE 0 END) as cancelled_bookings,
+//         COALESCE(SUM(total_amount), 0) as total_revenue
+//       FROM bookings
+//       WHERE deleted_at IS NULL
+//     `);
+//
+//     // Recent activity
+//     const recentUsers = await db.query(`
+//       SELECT u.user_id, up.name, u.user_type, u.created_at
+//       FROM users u
+//       LEFT JOIN user_profiles up ON u.user_id = up.user_id AND up.is_current = true
+//       ORDER BY u.created_at DESC
+//       LIMIT 5
+//     `);
+//
+//     res.json({
+//       success: true,
+//       data: {
+//         userStats: userStats.rows,
+//         pendingVendors: parseInt(pendingVendors.rows[0].count),
+//         bookingStats: bookingStats.rows[0],
+//         recentUsers: recentUsers.rows
+//       }
+//     });
+//
+//   } catch (error) {
+//     console.error('Get dashboard stats error:', error);
+//     res.status(500).json({
+//       success: false,
+//       message: 'Error fetching dashboard statistics.',
+//       error: error.message
+//     });
+//   }
+// };
 
 // Configure storage
 const storage = multer.diskStorage({
@@ -1294,29 +1513,34 @@ const getAllServices = async (req, res) => {
     const countQuery = `SELECT COUNT(*) FROM services_master ${whereClause}`;
     const countResult = await db.query(countQuery, queryParams);
     const total = parseInt(countResult.rows[0].count);
-    
+
     const servicesQuery = `
       SELECT 
-        service_id,
-        service_name,
-        service_description as description,
-        default_duration_minutes as duration_minutes,
-        base_price,
-        category,
-        is_available,
-        image_url,
-        requirements,
-        benefits,
-        service_type,
-        created_at,
-        updated_at,
-        status
-      FROM services_master 
+        sm.service_id,
+        sm.service_name,
+        sm.service_description as description,
+        sm.default_duration_minutes as duration_minutes,
+        sm.base_price,
+        sm.category,
+        sm.is_available,
+        sm.image_url,
+        sm.service_type,
+        sm.created_at,
+        sm.updated_at,
+        sm.status,
+        -- FIX: Resolve "Created By"
+        CASE
+          WHEN sm.created_by_vendor_id IS NULL THEN 'Admin'
+          ELSE COALESCE(up.name, 'Vendor #' || sm.created_by_vendor_id::text)
+        END as created_by_label
+      FROM services_master sm
+      LEFT JOIN user_profiles up 
+        ON up.user_id = sm.created_by_vendor_id AND up.is_current = true
       ${whereClause}
-      ORDER BY created_at DESC
+      ORDER BY sm.created_at DESC
       LIMIT $${paramCounter} OFFSET $${paramCounter + 1}
     `;
-    
+
     const services = await db.query(servicesQuery, [...queryParams, limit, offset]);
     
     console.log(`✅ Found ${services.rows.length} services`);
@@ -2347,7 +2571,7 @@ const createBooking = async (req, res) => {
     
     const bookingInsertQuery = `
       INSERT INTO bookings (
-        customer_id,
+        user_id,
         vendor_id,
         booking_date,
         total_amount,
@@ -2814,7 +3038,67 @@ const checkUserFCMTokens = async (req, res) => {
   }
 };
 
+const adminAddVendorService = async (req, res) => {
+  try {
+    const { id: vendorId } = req.params;
+    const { service_id, price, is_available = true } = req.body;
+
+    if (!service_id || !price) {
+      return res.status(400).json({ success: false, message: 'service_id and price are required.' });
+    }
+
+    // Check if already exists — update price instead of duplicate
+    const existing = await db.query(
+        `SELECT vendor_service_id FROM vendor_services WHERE vendor_id = $1 AND service_id = $2`,
+        [vendorId, service_id]
+    );
+
+    if (existing.rows.length > 0) {
+      // Reactivate + update price
+      await db.query(
+          `UPDATE vendor_services SET status = 'active', price = $1, is_available = $2, updated_at = NOW()
+         WHERE vendor_id = $3 AND service_id = $4`,
+          [price, is_available, vendorId, service_id]
+      );
+      return res.json({ success: true, message: 'Service reactivated and price updated.' });
+    }
+
+    await db.query(
+        `INSERT INTO vendor_services (vendor_id, service_id, price, is_available, status, created_at)
+       VALUES ($1, $2, $3, $4, 'active', NOW())`,
+        [vendorId, service_id, price, is_available]
+    );
+
+    res.status(201).json({ success: true, message: 'Service added to vendor.' });
+  } catch (error) {
+    console.error('adminAddVendorService error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+const adminRemoveVendorService = async (req, res) => {
+  try {
+    const { id: vendorId, serviceId } = req.params;
+
+    const result = await db.query(
+        `UPDATE vendor_services SET status = 'inactive', deleted_at = NOW()
+       WHERE vendor_service_id = $1 AND vendor_id = $2 AND status = 'active'`,
+        [serviceId, vendorId]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ success: false, message: 'Service not found for this vendor.' });
+    }
+
+    res.json({ success: true, message: 'Service removed from vendor.' });
+  } catch (error) {
+    console.error('adminRemoveVendorService error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 module.exports = {
+  getDashboardStats,
   getAllUsers,
   getUserById,
   createAdmin,
@@ -2851,5 +3135,7 @@ module.exports = {
   cancelBooking,
   getVendorServicesForBooking,
   sendNotification,
-  checkUserFCMTokens
+  checkUserFCMTokens,
+  adminAddVendorService,
+  adminRemoveVendorService,
 };

@@ -33,6 +33,17 @@ router.put('/shop/operating-hours', vendorController.updateShopOperatingHours);
 router.put('/shop/capacity', vendorController.updateShopCapacity);
 
 // ============================================
+// BLOCK TIME  (uses vendor_early_closures + vendor_holidays tables)
+//
+//   POST   /vendor/block-time        → blockTime
+//   GET    /vendor/block-time        → getBlockedTimes  (?date=YYYY-MM-DD optional)
+//   DELETE /vendor/block-time/:id    → deleteBlockedTime (?type=closure|holiday)
+// ============================================
+router.post  ('/block-time',          vendorController.blockTime);
+router.get   ('/block-time',          vendorController.getBlockedTimes);
+router.delete('/block-time/:blockId', vendorController.deleteBlockedTime);
+
+// ============================================
 // IMAGE MANAGEMENT
 // ============================================
 
@@ -46,10 +57,25 @@ router.post('/shop/gallery-images', vendorController.uploadShopGalleryImages);
 router.get('/shop/images', vendorController.getVendorImages);
 
 // Delete shop image
-router.delete('/shop/images/:image_id', vendorController.deleteVendorImage);
+router.delete('/shop/images/:document_id', vendorController.deleteVendorImage);
 
 // Set primary gallery image
-router.put('/shop/images/:image_id/primary', vendorController.setPrimaryImage);
+router.put('/shop/images/:document_id/primary', vendorController.setPrimaryImage);
+
+//For vendor App
+router.get('/images', vendorController.getVendorImages);
+
+//vendor Images/Docs
+router.post('/images', vendorController.uploadShopGalleryImages);
+
+//Delete Image
+router.delete('/images/:document_id', vendorController.deleteVendorImage);
+
+// Documents
+//For vendor App
+router.get('/documents', vendorController.getVendorDocuments);
+router.post('/documents', vendorController.uploadVendorDocument);
+router.delete('/documents/:document_id', vendorController.deleteVendorImage);
 
 // ============================================
 // DASHBOARD
@@ -70,6 +96,8 @@ router.get('/services', vendorController.getVendorServices);
 // Add single service
 router.post('/services', vendorController.addVendorService);
 
+router.post('/custom-service', vendorController.addCustomService);
+
 // Add multiple services
 router.post('/services/bulk', vendorController.addMultipleVendorServices);
 
@@ -87,6 +115,8 @@ router.delete('/services/:service_id', vendorController.deleteVendorService);
 // ============================================
 
 // Get all bookings (with filters)
+router.post('/bookings/offline', vendorController.createOfflineBooking);
+
 router.get('/bookings', vendorController.getVendorBookings);
 
 // Get booking details
@@ -104,8 +134,6 @@ router.put('/bookings/:bookingId/complete', vendorController.completeBooking);
 // Mark as no-show
 router.put('/bookings/:bookingId/no-show', vendorController.markNoShow);
 
-// Create offline booking (walk-in customer)
-router.post('/bookings/offline', vendorController.createOfflineBooking);
 
 // ============================================
 // REVIEWS
@@ -113,5 +141,14 @@ router.post('/bookings/offline', vendorController.createOfflineBooking);
 
 // Get vendor reviews
 router.get('/reviews', vendorController.getVendorReviews);
+
+// ============================================
+// NOTIFICATIONS
+// ============================================
+
+router.get('/notifications', vendorController.getNotifications);
+router.put('/notifications/:notificationId/read', vendorController.markNotificationRead);
+router.put('/notifications/read-all', vendorController.markAllNotificationsRead);
+router.put('/fcm-token', vendorController.updateFCMToken);
 
 module.exports = router;

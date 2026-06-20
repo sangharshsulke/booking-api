@@ -365,6 +365,7 @@ const updateShopVerification = async (req, res) => {
        SET status = $1, 
            admin_comments = $2, 
            verified_by = $3, 
+           verification_status = $1,
            verified_at = CURRENT_TIMESTAMP,
            updated_at = CURRENT_TIMESTAMP
        WHERE shop_id = $4
