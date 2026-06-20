@@ -502,14 +502,8 @@ const getVendorServices = async (req, res) => {
         sm.default_duration_minutes as duration_minutes,
         sm.category,
         vs.is_available,
-<<<<<<< HEAD
         sm.document_url,
         vs.created_at
-=======
-        sm.image_url,
-        vs.created_at,
-        vs.updated_at
->>>>>>> 420b244 (Fixes in auth)
       FROM vendor_services vs
       INNER JOIN services_master sm ON vs.service_id = sm.service_id
       WHERE vs.vendor_id = $1 
