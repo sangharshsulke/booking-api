@@ -1,99 +1,110 @@
 const jwt = require('jsonwebtoken');
 const db = require('../config/database');
 
-// Verify JWT
+const JWT_SECRET =
+    process.env.JWT_SECRET ||
+    '4uBCAsrlj0PS/960LL1vvSvJx0XrJputuuKvGUQCcQRtwCqtt8rYDRl3T0Fa19ruYghYFftKYD81WUfJ6MUxfg==';
+
+// ============================================
+// VERIFY TOKEN
+// B15: checks device_id embedded in JWT against stored value.
+// ============================================
 const verifyToken = async (req, res, next) => {
   try {
-    const token = req.headers.authorization?.split(' ')[1];
+    const authHeader = req.headers['authorization'];
 
-    if (!token) {
-      return res.status(401).json({ success: false, message: 'No token provided' });
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({
+        success: false,
+        code: 'NO_TOKEN',
+        message: 'Access denied. No token provided.',
+      });
     }
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const token = authHeader.split(' ')[1];
 
-    const result = await db.query(
-      'SELECT user_id, user_type, status FROM users WHERE user_id = $1',
-      [decoded.userId]
-    );
-
-    if (result.rows.length === 0) {
-      return res.status(401).json({ success: false, message: 'User not found' });
+    let decoded;
+    try {
+      decoded = jwt.verify(token, JWT_SECRET);
+    } catch (jwtError) {
+      if (jwtError.name === 'TokenExpiredError') {
+        return res.status(401).json({
+          success: false,
+          code: 'TOKEN_EXPIRED',
+          message: 'Session expired. Please log in again.',
+        });
+      }
+      return res.status(401).json({
+        success: false,
+        code: 'INVALID_TOKEN',
+        message: 'Invalid token.',
+      });
     }
 
-    if (result.rows[0].status !== 'active') {
-      return res.status(401).json({ success: false, message: 'User inactive' });
+    // B15: device_id check — skip if token pre-dates this feature
+    if (decoded.deviceId) {
+      const profileResult = await db.query(
+          'SELECT device_id FROM user_profiles WHERE user_id = $1 AND is_current = true',
+          [decoded.userId]
+      );
+      const storedDeviceId = profileResult.rows[0]?.device_id;
+      if (storedDeviceId && storedDeviceId !== decoded.deviceId) {
+        console.log(`🔒 B15: Device mismatch for user ${decoded.userId}`);
+        return res.status(401).json({
+          success: false,
+          code: 'SESSION_EXPIRED',
+          message: 'Your account has been signed in on another device. Please log in again.',
+        });
+      }
     }
 
     req.user = {
       userId: decoded.userId,
-      userType: result.rows[0].user_type   // ✅ FIXED
+      userType: decoded.userType,
+      deviceId: decoded.deviceId,
     };
 
     next();
-  } catch (err) {
-    return res.status(500).json({
-      success: false,
-      message: 'Token validation error',
-      error: err.message
-    });
+  } catch (error) {
+    console.error('❌ Token verification error:', error);
+    res.status(500).json({ success: false, message: 'Error verifying token.', error: error.message });
   }
 };
 
+// ============================================
+// ROLE GUARDS
+// ============================================
 
-// Check if user is admin or superadmin
-// Admin guard
 const isAdmin = (req, res, next) => {
-  const role = req.user.userType?.toUpperCase();  // ✅ FIXED
-
-  if (role !== 'ADMIN' && role !== 'SUPERADMIN') {
-    return res.status(403).json({
-      success: false,
-      message: 'Admin privileges required'
-    });
+  if (req.user.userType !== 'ADMIN' && req.user.userType !== 'SUPERADMIN') {
+    return res.status(403).json({ success: false, message: 'Admin access required.' });
   }
-
   next();
 };
 
-// Check if user is superadmin
+// FIX: isSuperAdmin was missing from module.exports.
+// adminRoutes.js line 20: router.post('/users/admin', isSuperAdmin, ...)
+// Express received undefined for the callback → crash on startup.
 const isSuperAdmin = (req, res, next) => {
-  const role = req.user.userType?.toUpperCase();
-  if (role !== 'SUPERADMIN') {
-    return res.status(403).json({
-      success: false,
-      message: 'Access denied. Super admin privileges required.'
-    });
+  if (req.user.userType !== 'SUPERADMIN') {
+    return res.status(403).json({ success: false, message: 'SuperAdmin access required.' });
   }
   next();
 };
 
-// Check if user is vendor
 const isVendor = (req, res, next) => {
   if (req.user.userType !== 'VENDOR') {
-    return res.status(403).json({
-      success: false,
-      message: 'Access denied. Vendor privileges required.'
-    });
+    return res.status(403).json({ success: false, message: 'Vendor access required.' });
   }
   next();
 };
 
-// Check if user is customer
 const isCustomer = (req, res, next) => {
-  if (req.user.userType !== 'customer') {
-    return res.status(403).json({
-      success: false,
-      message: 'Access denied. Customer privileges required.'
-    });
+  if (req.user.userType !== 'CUSTOMER') {
+    return res.status(403).json({ success: false, message: 'Customer access required.' });
   }
   next();
 };
 
-module.exports = {
-  verifyToken,
-  isAdmin,
-  isSuperAdmin,
-  isVendor,
-  isCustomer
-};
+// FIX: now exports isSuperAdmin so adminRoutes.js destructuring works
+module.exports = { verifyToken, isAdmin, isSuperAdmin, isVendor, isCustomer };

@@ -1,0 +1,1706 @@
+{
+  "info": {
+    "name": "Saloon Booking API - Complete Collection",
+    "description": "Complete Postman API Collection for Saloon/Barber Shop Booking Management System.\n\nUser Types: CUSTOMER, VENDOR (salon owner), ADMIN, SUPERADMIN\n\nAuth: Firebase OTP → JWT Token (Bearer)\n\nBase URL: http://localhost:3000/api",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_postman_id": "saloon-booking-complete-v2"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3000/api", "type": "string" },
+    { "key": "customerToken", "value": "", "type": "string", "description": "JWT token for CUSTOMER" },
+    { "key": "vendorToken", "value": "", "type": "string", "description": "JWT token for VENDOR" },
+    { "key": "adminToken", "value": "", "type": "string", "description": "JWT token for ADMIN/SUPERADMIN" },
+    { "key": "bookingId", "value": "1", "type": "string" },
+    { "key": "shopId", "value": "1", "type": "string" },
+    { "key": "vendorId", "value": "2", "type": "string" },
+    { "key": "serviceId", "value": "1", "type": "string" }
+  ],
+  "item": [
+
+    {
+      "name": "🔐 AUTH",
+      "description": "Authentication APIs - OTP based login/register + legacy login",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:3000/health",
+              "host": ["http://localhost:3000"],
+              "path": ["health"]
+            },
+            "description": "Server health check - no auth required"
+          }
+        },
+        {
+          "name": "Send OTP (Check User)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone_number\": \"+919876543210\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/send-otp",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "send-otp"]
+            },
+            "description": "Step 1: Check if user exists. OTP is sent via Firebase on client side.\n\nReturns: user_exists, user_type, user_status\n\nPhone format: E.164 (e.g. +919876543210)"
+          }
+        },
+        {
+          "name": "Verify OTP + Login/Register (Customer)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if(pm.response.code === 200){",
+                  "  const json = pm.response.json();",
+                  "  if(json.data && json.data.token){",
+                  "    pm.collectionVariables.set('customerToken', json.data.token);",
+                  "    console.log('✅ Customer token saved');",
+                  "  }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firebase_token\": \"BYPASS_TOKEN_test123\",\n  \"phone_number\": \"+919876543210\",\n  \"name\": \"Rahul Patil\",\n  \"email\": \"rahul@example.com\",\n  \"user_type\": \"CUSTOMER\",\n  \"city\": \"Pune\",\n  \"state\": \"Maharashtra\",\n  \"gender\": \"male\",\n  \"device_id\": \"device_abc123\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/verify-otp",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "verify-otp"]
+            },
+            "description": "Step 2: Verify OTP and Login OR Register.\n\nFor testing use BYPASS_TOKEN_ prefix in firebase_token.\n\nIf user doesn't exist → auto-registers.\nIf user exists → logs in.\n\nReturns: JWT token, user info, is_new_user flag."
+          }
+        },
+        {
+          "name": "Verify OTP + Login/Register (Vendor)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if(pm.response.code === 200){",
+                  "  const json = pm.response.json();",
+                  "  if(json.data && json.data.token){",
+                  "    pm.collectionVariables.set('vendorToken', json.data.token);",
+                  "    console.log('✅ Vendor token saved');",
+                  "  }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firebase_token\": \"BYPASS_TOKEN_vendor123\",\n  \"phone_number\": \"+918765432109\",\n  \"name\": \"Suresh Kamble\",\n  \"email\": \"suresh.salon@example.com\",\n  \"user_type\": \"VENDOR\",\n  \"city\": \"Nagpur\",\n  \"state\": \"Maharashtra\",\n  \"gender\": \"male\",\n  \"device_id\": \"vendor_device_xyz\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/verify-otp",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "verify-otp"]
+            }
+          }
+        },
+        {
+          "name": "Check User (phone exists?)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone_number\": \"+919876543210\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/check-user",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "check-user"]
+            },
+            "description": "Check if phone number is already registered"
+          }
+        },
+        {
+          "name": "Legacy Register (password-based)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone_number\": \"9876543210\",\n  \"email\": \"customer@example.com\",\n  \"password\": \"password123\",\n  \"name\": \"Rahul Patil\",\n  \"user_type\": \"CUSTOMER\",\n  \"city\": \"Pune\",\n  \"state\": \"Maharashtra\",\n  \"gender\": \"male\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/register",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "register"]
+            },
+            "description": "Legacy: password-based registration (not used in Flutter app)"
+          }
+        },
+        {
+          "name": "Legacy Login (password-based)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if(pm.response.code === 200){",
+                  "  const json = pm.response.json();",
+                  "  if(json.data && json.data.token){",
+                  "    pm.collectionVariables.set('adminToken', json.data.token);",
+                  "    console.log('✅ Admin token saved');",
+                  "  }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone_number\": \"9999999999\",\n  \"password\": \"admin123\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "login"]
+            },
+            "description": "Legacy: password-based login. Useful for ADMIN/SUPERADMIN who don't use OTP."
+          }
+        },
+        {
+          "name": "Get My Profile",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{customerToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/auth/profile",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "profile"]
+            },
+            "description": "Get logged-in user's profile. Auth required."
+          }
+        },
+        {
+          "name": "Update My Profile",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{customerToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Rahul Patil Updated\",\n  \"email\": \"rahul.new@example.com\",\n  \"city\": \"Mumbai\",\n  \"state\": \"Maharashtra\",\n  \"gender\": \"male\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/profile",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "profile"]
+            }
+          }
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{customerToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/auth/logout",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "logout"]
+            },
+            "description": "Clears device_id so old JWT is invalidated on next request."
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "👤 CUSTOMER",
+      "description": "All Customer APIs. Requires CUSTOMER JWT token.",
+      "item": [
+        {
+          "name": "Dashboard",
+          "item": [
+            {
+              "name": "Get Dashboard Stats",
+              "request": {
+                "method": "GET",
+                "header": [{ "key": "Authorization", "value": "Bearer {{customerToken}}" }],
+                "url": {
+                  "raw": "{{baseUrl}}/customer/dashboard/stats",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["customer", "dashboard", "stats"]
+                },
+                "description": "Returns: total_bookings, completed, upcoming, cancelled counts + upcoming appointments + favourite vendors"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Shop Discovery",
+          "item": [
+            {
+              "name": "Get All Shops",
+              "request": {
+                "method": "GET",
+                "header": [{ "key": "Authorization", "value": "Bearer {{customerToken}}" }],
+                "url": {
+                  "raw": "{{baseUrl}}/customer/shops",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["customer", "shops"]
+                },
+                "description": "List all approved shops. Can add ?city=Pune or ?search=haircut filters."
+              }
+            },
+            {
+              "name": "Get Shop Details",
+              "request": {
+                "method": "GET",
+                "header": [{ "key": "Authorization", "value": "Bearer {{customerToken}}" }],
+                "url": {
+                  "raw": "{{baseUrl}}/customer/shops/{{shopId}}",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["customer", "shops", "{{shopId}}"]
+                },
+                "description": "Full shop details: info, services, images, ratings, operating hours"
+              }
+            },
+            {
+              "name": "Get Available Time Slots",
+              "request": {
+                "method": "GET",
+                "header": [{ "key": "Authorization", "value": "Bearer {{customerToken}}" }],
+                "url": {
+                  "raw": "{{baseUrl}}/customer/shops/{{shopId}}/available-slots?date=2026-06-20&service_ids=1,2",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["customer", "shops", "{{shopId}}", "available-slots"],
+                  "query": [
+                    { "key": "date", "value": "2026-06-20", "description": "Format: YYYY-MM-DD" },
+                    { "key": "service_ids", "value": "1,2", "description": "Comma-separated service IDs to book" }
+                  ]
+                },
+                "description": "Get available 30-min slots for a shop on given date considering existing bookings, holidays, early closures, and operating hours."
+              }
+            }
+          ]
+        },
+        {
+          "name": "Bookings",
+          "item": [
+            {
+              "name": "Create Booking",
+              "request": {
+                "method": "POST",
+                "header": [
+                  { "key": "Authorization", "value": "Bearer {{customerToken}}" },
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"vendor_id\": 2,\n  \"booking_date\": \"2026-06-25\",\n  \"booking_time\": \"10:00\",\n  \"service_ids\": [1, 2],\n  \"payment_method\": \"cash\",\n  \"total_amount\": 250.00\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/customer/bookings",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["customer", "bookings"]
+                },
+                "description": "Create a new booking. service_ids = array of service IDs from the shop.\n\nbooking_time: HH:MM format (24-hour)\n\npayment_method: cash | online | upi"
+              }
+            },
+            {
+              "name": "Get My Bookings",
+              "request": {
+                "method": "GET",
+                "header": [{ "key": "Authorization", "value": "Bearer {{customerToken}}" }],
+                "url": {
+                  "raw": "{{baseUrl}}/customer/bookings?status=confirmed",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["customer", "bookings"],
+                  "query": [
+                    { "key": "status", "value": "confirmed", "description": "confirmed | completed | cancelled | all" }
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Get Booking Details",
+              "request": {
+                "method": "GET",
+                "header": [{ "key": "Authorization", "value": "Bearer {{customerToken}}" }],
+                "url": {
+                  "raw": "{{baseUrl}}/customer/bookings/{{bookingId}}",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["customer", "bookings", "{{bookingId}}"]
+                }
+              }
+            },
+            {
+              "name": "Cancel Booking",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  { "key": "Authorization", "value": "Bearer {{customerToken}}" },
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"cancellation_reason\": \"Plans changed\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/customer/bookings/{{bookingId}}/cancel",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["customer", "bookings", "{{bookingId}}", "cancel"]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Reviews",
+          "item": [
+            {
+              "name": "Add Review",
+              "request": {
+                "method": "POST",
+                "header": [
+                  { "key": "Authorization", "value": "Bearer {{customerToken}}" },
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"booking_id\": 1,\n  \"vendor_id\": 2,\n  \"rating\": 5,\n  \"review_text\": \"Excellent service! Very clean salon and skilled barber.\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/customer/reviews",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["customer", "reviews"]
+                },
+                "description": "Add review for a completed booking. One review per booking allowed. Rating: 1-5."
+              }
+            }
+          ]
+        },
+        {
+          "name": "Categories & Services",
+          "item": [
+            {
+              "name": "Get All Categories",
+              "request": {
+                "method": "GET",
+                "header": [{ "key": "Authorization", "value": "Bearer {{customerToken}}" }],
+                "url": {
+                  "raw": "{{baseUrl}}/customer/categories",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["customer", "categories"]
+                }
+              }
+            },
+            {
+              "name": "Get Services by Category",
+              "request": {
+                "method": "GET",
+                "header": [{ "key": "Authorization", "value": "Bearer {{customerToken}}" }],
+                "url": {
+                  "raw": "{{baseUrl}}/customer/categories/haircut/services",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["customer", "categories", "haircut", "services"]
+                },
+                "description": "Replace 'haircut' with the category name"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Notifications",
+          "item": [
+            {
+              "name": "Get Notifications",
+              "request": {
+                "method": "GET",
+                "header": [{ "key": "Authorization", "value": "Bearer {{customerToken}}" }],
+                "url": {
+                  "raw": "{{baseUrl}}/customer/notifications",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["customer", "notifications"]
+                }
+              }
+            },
+            {
+              "name": "Mark Notification Read",
+              "request": {
+                "method": "PUT",
+                "header": [{ "key": "Authorization", "value": "Bearer {{customerToken}}" }],
+                "url": {
+                  "raw": "{{baseUrl}}/customer/notifications/1/read",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["customer", "notifications", "1", "read"]
+                }
+              }
+            },
+            {
+              "name": "Mark All Notifications Read",
+              "request": {
+                "method": "PUT",
+                "header": [{ "key": "Authorization", "value": "Bearer {{customerToken}}" }],
+                "url": {
+                  "raw": "{{baseUrl}}/customer/notifications/read-all",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["customer", "notifications", "read-all"]
+                }
+              }
+            },
+            {
+              "name": "Update FCM Token",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  { "key": "Authorization", "value": "Bearer {{customerToken}}" },
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"fcm_token\": \"FCM_TOKEN_FROM_FIREBASE_SDK_HERE\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/customer/fcm-token",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["customer", "fcm-token"]
+                },
+                "description": "Update Firebase Cloud Messaging token for push notifications"
+              }
+            }
+          ]
+        }
+      ]
+    },
+
+    {
+      "name": "🏪 VENDOR",
+      "description": "All Vendor APIs. Requires VENDOR JWT token.",
+      "item": [
+        {
+          "name": "Profile",
+          "item": [
+            {
+              "name": "Get Vendor Profile",
+              "request": {
+                "method": "GET",
+                "header": [{ "key": "Authorization", "value": "Bearer {{vendorToken}}" }],
+                "url": {
+                  "raw": "{{baseUrl}}/vendor/profile",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["vendor", "profile"]
+                },
+                "description": "Full vendor profile: personal info + shop details + metrics (ratings, bookings, revenue)"
+              }
+            },
+            {
+              "name": "Update Vendor Profile",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  { "key": "Authorization", "value": "Bearer {{vendorToken}}" },
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Suresh Kamble\",\n  \"email\": \"suresh.salon@gmail.com\",\n  \"city\": \"Nagpur\",\n  \"state\": \"Maharashtra\",\n  \"gender\": \"male\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/vendor/profile",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["vendor", "profile"]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Shop Management",
+          "item": [
+            {
+              "name": "Get Shop Details",
+              "request": {
+                "method": "GET",
+                "header": [{ "key": "Authorization", "value": "Bearer {{vendorToken}}" }],
+                "url": {
+                  "raw": "{{baseUrl}}/vendor/shop",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["vendor", "shop"]
+                }
+              }
+            },
+            {
+              "name": "Create or Update Shop",
+              "request": {
+                "method": "POST",
+                "header": [
+                  { "key": "Authorization", "value": "Bearer {{vendorToken}}" },
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"shop_name\": \"Style Hub Salon\",\n  \"shop_address\": \"123 MG Road, Near Bus Stand\",\n  \"city\": \"Nagpur\",\n  \"state\": \"Maharashtra\",\n  \"latitude\": 21.1458,\n  \"longitude\": 79.0882,\n  \"open_time\": \"09:00\",\n  \"close_time\": \"20:00\",\n  \"break_start_time\": \"13:00\",\n  \"break_end_time\": \"14:00\",\n  \"weekly_holiday\": \"Sunday\",\n  \"no_of_seats\": 3,\n  \"no_of_workers\": 3,\n  \"business_license\": \"LIC123456\",\n  \"tax_number\": \"GST29ABCDE1234F1Z5\",\n  \"bank_account_number\": \"1234567890\",\n  \"bank_ifsc_code\": \"SBIN0001234\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/vendor/shop",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["vendor", "shop"]
+                },
+                "description": "Create shop on first time. Use PUT to update. Shop status starts as 'pending' until admin approves."
+              }
+            },
+            {
+              "name": "Update Operating Hours",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  { "key": "Authorization", "value": "Bearer {{vendorToken}}" },
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"open_time\": \"08:00\",\n  \"close_time\": \"21:00\",\n  \"break_start_time\": \"13:00\",\n  \"break_end_time\": \"14:00\",\n  \"weekly_holiday\": \"Monday\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/vendor/shop/operating-hours",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["vendor", "shop", "operating-hours"]
+                }
+              }
+            },
+            {
+              "name": "Update Shop Capacity",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  { "key": "Authorization", "value": "Bearer {{vendorToken}}" },
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"no_of_seats\": 5,\n  \"no_of_workers\": 5\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/vendor/shop/capacity",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["vendor", "shop", "capacity"]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Block Time (Holidays & Early Closures)",
+          "item": [
+            {
+              "name": "Block Time (Holiday or Early Close)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  { "key": "Authorization", "value": "Bearer {{vendorToken}}" },
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"type\": \"holiday\",\n  \"date\": \"2026-07-04\",\n  \"reason\": \"Festival Holiday - Ashadhi Ekadashi\"\n}\n\n// OR for early closure:\n// {\n//   \"type\": \"closure\",\n//   \"date\": \"2026-06-28\",\n//   \"early_close_time\": \"16:00\",\n//   \"reason\": \"Closing early for family function\"\n// }"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/vendor/block-time",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["vendor", "block-time"]
+                },
+                "description": "type: 'holiday' (full day off) OR 'closure' (early closing time)\n\nHoliday → stored in vendor_holidays table\nClosure → stored in vendor_early_closures table"
+              }
+            },
+            {
+              "name": "Get Blocked Times",
+              "request": {
+                "method": "GET",
+                "header": [{ "key": "Authorization", "value": "Bearer {{vendorToken}}" }],
+                "url": {
+                  "raw": "{{baseUrl}}/vendor/block-time?date=2026-07-04",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["vendor", "block-time"],
+                  "query": [
+                    { "key": "date", "value": "2026-07-04", "description": "Optional filter by date" }
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Delete Blocked Time",
+              "request": {
+                "method": "DELETE",
+                "header": [{ "key": "Authorization", "value": "Bearer {{vendorToken}}" }],
+                "url": {
+                  "raw": "{{baseUrl}}/vendor/block-time/1?type=holiday",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["vendor", "block-time", "1"],
+                  "query": [
+                    { "key": "type", "value": "holiday", "description": "holiday OR closure" }
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Images & Documents",
+          "item": [
+            {
+              "name": "Upload Shop Profile Image",
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Authorization", "value": "Bearer {{vendorToken}}" }],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    { "key": "image", "type": "file", "src": "", "description": "Shop profile image file (jpg/png)" }
+                  ]
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/vendor/shop/profile-image",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["vendor", "shop", "profile-image"]
+                },
+                "description": "Upload main profile image for the shop. Form-data with 'image' key."
+              }
+            },
+            {
+              "name": "Upload Gallery Images",
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Authorization", "value": "Bearer {{vendorToken}}" }],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    { "key": "images", "type": "file", "src": "", "description": "Multiple gallery images" }
+                  ]
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/vendor/shop/gallery-images",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["vendor", "shop", "gallery-images"]
+                },
+                "description": "Upload multiple shop gallery images. Can send multiple 'images' files."
+              }
+            },
+            {
+              "name": "Get All Shop Images",
+              "request": {
+                "method": "GET",
+                "header": [{ "key": "Authorization", "value": "Bearer {{vendorToken}}" }],
+                "url": {
+                  "raw": "{{baseUrl}}/vendor/shop/images",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["vendor", "shop", "images"]
+                }
+              }
+            },
+            {
+              "name": "Delete Shop Image",
+              "request": {
+                "method": "DELETE",
+                "header": [{ "key": "Authorization", "value": "Bearer {{vendorToken}}" }],
+                "url": {
+                  "raw": "{{baseUrl}}/vendor/shop/images/1",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["vendor", "shop", "images", "1"]
+                },
+                "description": "Replace '1' with document_id of the image"
+              }
+            },
+            {
+              "name": "Set Primary Gallery Image",
+              "request": {
+                "method": "PUT",
+                "header": [{ "key": "Authorization", "value": "Bearer {{vendorToken}}" }],
+                "url": {
+                  "raw": "{{baseUrl}}/vendor/shop/images/1/primary",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["vendor", "shop", "images", "1", "primary"]
+                }
+              }
+            },
+            {
+              "name": "Get Vendor Documents",
+              "request": {
+                "method": "GET",
+                "header": [{ "key": "Authorization", "value": "Bearer {{vendorToken}}" }],
+                "url": {
+                  "raw": "{{baseUrl}}/vendor/documents",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["vendor", "documents"]
+                },
+                "description": "Get all documents (license, id_proof, etc.)"
+              }
+            },
+            {
+              "name": "Upload Vendor Document",
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Authorization", "value": "Bearer {{vendorToken}}" }],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    { "key": "document", "type": "file", "src": "", "description": "Document file (pdf/jpg/png)" },
+                    { "key": "document_type", "value": "license", "type": "text", "description": "license | id_proof | tax_certificate" }
+                  ]
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/vendor/documents",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["vendor", "documents"]
+                }
+              }
+            },
+            {
+              "name": "Delete Vendor Document",
+              "request": {
+                "method": "DELETE",
+                "header": [{ "key": "Authorization", "value": "Bearer {{vendorToken}}" }],
+                "url": {
+                  "raw": "{{baseUrl}}/vendor/documents/1",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["vendor", "documents", "1"]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Dashboard",
+          "item": [
+            {
+              "name": "Get Dashboard Stats",
+              "request": {
+                "method": "GET",
+                "header": [{ "key": "Authorization", "value": "Bearer {{vendorToken}}" }],
+                "url": {
+                  "raw": "{{baseUrl}}/vendor/dashboard/stats",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["vendor", "dashboard", "stats"]
+                },
+                "description": "Returns: total revenue, bookings count, ratings, today's schedule, recent bookings"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Services",
+          "item": [
+            {
+              "name": "Get All Master Services (dropdown)",
+              "request": {
+                "method": "GET",
+                "header": [{ "key": "Authorization", "value": "Bearer {{vendorToken}}" }],
+                "url": {
+                  "raw": "{{baseUrl}}/vendor/services/master",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["vendor", "services", "master"]
+                },
+                "description": "List of all services from services_master table. Use to pick services to add to shop."
+              }
+            },
+            {
+              "name": "Get My Services",
+              "request": {
+                "method": "GET",
+                "header": [{ "key": "Authorization", "value": "Bearer {{vendorToken}}" }],
+                "url": {
+                  "raw": "{{baseUrl}}/vendor/services",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["vendor", "services"]
+                }
+              }
+            },
+            {
+              "name": "Add Single Service",
+              "request": {
+                "method": "POST",
+                "header": [
+                  { "key": "Authorization", "value": "Bearer {{vendorToken}}" },
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"service_id\": 1,\n  \"price\": 150.00\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/vendor/services",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["vendor", "services"]
+                }
+              }
+            },
+            {
+              "name": "Add Custom Service",
+              "request": {
+                "method": "POST",
+                "header": [
+                  { "key": "Authorization", "value": "Bearer {{vendorToken}}" },
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"service_name\": \"Special Bridal Package\",\n  \"service_description\": \"Full bridal makeup and styling\",\n  \"price\": 2500.00,\n  \"duration_minutes\": 120\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/vendor/custom-service",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["vendor", "custom-service"]
+                }
+              }
+            },
+            {
+              "name": "Add Multiple Services (Bulk)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  { "key": "Authorization", "value": "Bearer {{vendorToken}}" },
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"services\": [\n    { \"service_id\": 1, \"price\": 100 },\n    { \"service_id\": 2, \"price\": 150 },\n    { \"service_id\": 3, \"price\": 80 }\n  ]\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/vendor/services/bulk",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["vendor", "services", "bulk"]
+                }
+              }
+            },
+            {
+              "name": "Update Service Price",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  { "key": "Authorization", "value": "Bearer {{vendorToken}}" },
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"price\": 200.00\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/vendor/services/{{serviceId}}",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["vendor", "services", "{{serviceId}}"]
+                }
+              }
+            },
+            {
+              "name": "Toggle Service Availability",
+              "request": {
+                "method": "PATCH",
+                "header": [
+                  { "key": "Authorization", "value": "Bearer {{vendorToken}}" },
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"is_available\": false\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/vendor/services/{{serviceId}}/availability",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["vendor", "services", "{{serviceId}}", "availability"]
+                },
+                "description": "Enable/disable a service temporarily without deleting it."
+              }
+            },
+            {
+              "name": "Delete Service",
+              "request": {
+                "method": "DELETE",
+                "header": [{ "key": "Authorization", "value": "Bearer {{vendorToken}}" }],
+                "url": {
+                  "raw": "{{baseUrl}}/vendor/services/{{serviceId}}",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["vendor", "services", "{{serviceId}}"]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Bookings",
+          "item": [
+            {
+              "name": "Get All Bookings",
+              "request": {
+                "method": "GET",
+                "header": [{ "key": "Authorization", "value": "Bearer {{vendorToken}}" }],
+                "url": {
+                  "raw": "{{baseUrl}}/vendor/bookings?status=confirmed&date=2026-06-20",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["vendor", "bookings"],
+                  "query": [
+                    { "key": "status", "value": "confirmed", "description": "confirmed | completed | cancelled" },
+                    { "key": "date", "value": "2026-06-20", "description": "Filter by date YYYY-MM-DD" }
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Get Booking Details",
+              "request": {
+                "method": "GET",
+                "header": [{ "key": "Authorization", "value": "Bearer {{vendorToken}}" }],
+                "url": {
+                  "raw": "{{baseUrl}}/vendor/bookings/{{bookingId}}",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["vendor", "bookings", "{{bookingId}}"]
+                }
+              }
+            },
+            {
+              "name": "Create Offline Booking (Walk-in)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  { "key": "Authorization", "value": "Bearer {{vendorToken}}" },
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"customer_name\": \"Walk-in Customer\",\n  \"customer_phone\": \"9876543210\",\n  \"service_ids\": [1, 2],\n  \"booking_date\": \"2026-06-20\",\n  \"booking_time\": \"11:00\",\n  \"payment_method\": \"cash\",\n  \"total_amount\": 250.00\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/vendor/bookings/offline",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["vendor", "bookings", "offline"]
+                },
+                "description": "Create booking for walk-in customers (no app needed). Vendor creates booking on behalf of customer."
+              }
+            },
+            {
+              "name": "Accept Booking",
+              "request": {
+                "method": "PUT",
+                "header": [{ "key": "Authorization", "value": "Bearer {{vendorToken}}" }],
+                "url": {
+                  "raw": "{{baseUrl}}/vendor/bookings/{{bookingId}}/accept",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["vendor", "bookings", "{{bookingId}}", "accept"]
+                }
+              }
+            },
+            {
+              "name": "Reject Booking",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  { "key": "Authorization", "value": "Bearer {{vendorToken}}" },
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"rejection_reason\": \"Slot not available due to emergency\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/vendor/bookings/{{bookingId}}/reject",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["vendor", "bookings", "{{bookingId}}", "reject"]
+                }
+              }
+            },
+            {
+              "name": "Complete Booking",
+              "request": {
+                "method": "PUT",
+                "header": [{ "key": "Authorization", "value": "Bearer {{vendorToken}}" }],
+                "url": {
+                  "raw": "{{baseUrl}}/vendor/bookings/{{bookingId}}/complete",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["vendor", "bookings", "{{bookingId}}", "complete"]
+                }
+              }
+            },
+            {
+              "name": "Mark No-Show",
+              "request": {
+                "method": "PUT",
+                "header": [{ "key": "Authorization", "value": "Bearer {{vendorToken}}" }],
+                "url": {
+                  "raw": "{{baseUrl}}/vendor/bookings/{{bookingId}}/no-show",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["vendor", "bookings", "{{bookingId}}", "no-show"]
+                },
+                "description": "Mark customer as no-show when they don't arrive at appointment time"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Reviews",
+          "item": [
+            {
+              "name": "Get My Reviews",
+              "request": {
+                "method": "GET",
+                "header": [{ "key": "Authorization", "value": "Bearer {{vendorToken}}" }],
+                "url": {
+                  "raw": "{{baseUrl}}/vendor/reviews",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["vendor", "reviews"]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Notifications",
+          "item": [
+            {
+              "name": "Get Notifications",
+              "request": {
+                "method": "GET",
+                "header": [{ "key": "Authorization", "value": "Bearer {{vendorToken}}" }],
+                "url": {
+                  "raw": "{{baseUrl}}/vendor/notifications",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["vendor", "notifications"]
+                }
+              }
+            },
+            {
+              "name": "Mark Notification Read",
+              "request": {
+                "method": "PUT",
+                "header": [{ "key": "Authorization", "value": "Bearer {{vendorToken}}" }],
+                "url": {
+                  "raw": "{{baseUrl}}/vendor/notifications/1/read",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["vendor", "notifications", "1", "read"]
+                }
+              }
+            },
+            {
+              "name": "Mark All Read",
+              "request": {
+                "method": "PUT",
+                "header": [{ "key": "Authorization", "value": "Bearer {{vendorToken}}" }],
+                "url": {
+                  "raw": "{{baseUrl}}/vendor/notifications/read-all",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["vendor", "notifications", "read-all"]
+                }
+              }
+            },
+            {
+              "name": "Update FCM Token",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  { "key": "Authorization", "value": "Bearer {{vendorToken}}" },
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"fcm_token\": \"FCM_TOKEN_FROM_FIREBASE_SDK\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/vendor/fcm-token",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["vendor", "fcm-token"]
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+
+    {
+      "name": "👑 ADMIN",
+      "description": "Admin/SuperAdmin APIs. Requires ADMIN or SUPERADMIN JWT token.",
+      "item": [
+        {
+          "name": "Dashboard",
+          "item": [
+            {
+              "name": "Get Admin Dashboard Stats",
+              "request": {
+                "method": "GET",
+                "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/dashboard/stats",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["admin", "dashboard", "stats"]
+                },
+                "description": "Platform overview: total users, vendors, bookings, revenue"
+              }
+            }
+          ]
+        },
+        {
+          "name": "User Management",
+          "item": [
+            {
+              "name": "Get All Users",
+              "request": {
+                "method": "GET",
+                "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/users?user_type=CUSTOMER",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["admin", "users"],
+                  "query": [
+                    { "key": "user_type", "value": "CUSTOMER", "description": "CUSTOMER | VENDOR | ADMIN" }
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Get User By ID",
+              "request": {
+                "method": "GET",
+                "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/users/1",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["admin", "users", "1"]
+                }
+              }
+            },
+            {
+              "name": "Update User Status (block/unblock)",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  { "key": "Authorization", "value": "Bearer {{adminToken}}" },
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"status\": \"inactive\"\n}\n\n// status options: active | inactive | suspended"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/admin/users/1/status",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["admin", "users", "1", "status"]
+                }
+              }
+            },
+            {
+              "name": "Delete User",
+              "request": {
+                "method": "DELETE",
+                "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/users/1",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["admin", "users", "1"]
+                }
+              }
+            },
+            {
+              "name": "Create Admin (SuperAdmin only)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  { "key": "Authorization", "value": "Bearer {{adminToken}}" },
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"phone_number\": \"9000000001\",\n  \"email\": \"newadmin@admin.com\",\n  \"password\": \"adminSecure@123\",\n  \"name\": \"New Admin\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/admin/users/admin",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["admin", "users", "admin"]
+                },
+                "description": "Only SUPERADMIN can create ADMIN accounts."
+              }
+            }
+          ]
+        },
+        {
+          "name": "Vendor Management",
+          "item": [
+            {
+              "name": "Get All Vendors",
+              "request": {
+                "method": "GET",
+                "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/vendors?status=pending",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["admin", "vendors"],
+                  "query": [
+                    { "key": "status", "value": "pending", "description": "pending | approved | rejected" }
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Get Vendor By ID",
+              "request": {
+                "method": "GET",
+                "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/vendors/{{vendorId}}",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["admin", "vendors", "{{vendorId}}"]
+                }
+              }
+            },
+            {
+              "name": "Approve / Reject Vendor Shop",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  { "key": "Authorization", "value": "Bearer {{adminToken}}" },
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"verification_status\": \"approved\",\n  \"admin_comments\": \"All documents verified. Shop approved.\"\n}\n\n// verification_status: approved | rejected"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/admin/vendors/{{vendorId}}/verification",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["admin", "vendors", "{{vendorId}}", "verification"]
+                },
+                "description": "Admin approves or rejects a vendor's shop. Vendor gets notification via FCM."
+              }
+            },
+            {
+              "name": "Update Vendor Shop Details",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  { "key": "Authorization", "value": "Bearer {{adminToken}}" },
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"shop_name\": \"Updated Shop Name\",\n  \"shop_address\": \"New Address\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/admin/vendors/{{vendorId}}/shop",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["admin", "vendors", "{{vendorId}}", "shop"]
+                }
+              }
+            },
+            {
+              "name": "Get Vendor Documents",
+              "request": {
+                "method": "GET",
+                "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/vendors/{{vendorId}}/documents",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["admin", "vendors", "{{vendorId}}", "documents"]
+                }
+              }
+            },
+            {
+              "name": "Approve / Reject Document",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  { "key": "Authorization", "value": "Bearer {{adminToken}}" },
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"status\": \"approved\",\n  \"admin_comments\": \"Document is clear and valid.\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/admin/documents/1/verification",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["admin", "documents", "1", "verification"]
+                }
+              }
+            },
+            {
+              "name": "Delete Document",
+              "request": {
+                "method": "DELETE",
+                "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/documents/1",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["admin", "documents", "1"]
+                }
+              }
+            },
+            {
+              "name": "Get Vendor Services (for booking)",
+              "request": {
+                "method": "GET",
+                "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/vendors/{{vendorId}}/services",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["admin", "vendors", "{{vendorId}}", "services"]
+                }
+              }
+            },
+            {
+              "name": "Add Service to Vendor",
+              "request": {
+                "method": "POST",
+                "header": [
+                  { "key": "Authorization", "value": "Bearer {{adminToken}}" },
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"service_id\": 3,\n  \"price\": 120.00\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/admin/vendors/{{vendorId}}/services/add",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["admin", "vendors", "{{vendorId}}", "services", "add"]
+                }
+              }
+            },
+            {
+              "name": "Remove Service from Vendor",
+              "request": {
+                "method": "DELETE",
+                "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/vendors/{{vendorId}}/services/{{serviceId}}",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["admin", "vendors", "{{vendorId}}", "services", "{{serviceId}}"]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Services (Master List)",
+          "item": [
+            {
+              "name": "Get All Services",
+              "request": {
+                "method": "GET",
+                "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/services",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["admin", "services"]
+                }
+              }
+            },
+            {
+              "name": "Get Service By ID",
+              "request": {
+                "method": "GET",
+                "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/services/{{serviceId}}",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["admin", "services", "{{serviceId}}"]
+                }
+              }
+            },
+            {
+              "name": "Create Service",
+              "request": {
+                "method": "POST",
+                "header": [
+                  { "key": "Authorization", "value": "Bearer {{adminToken}}" },
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"service_name\": \"Hair Coloring\",\n  \"service_description\": \"Professional hair coloring service\",\n  \"default_duration_minutes\": 90,\n  \"service_type\": \"normal\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/admin/services",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["admin", "services"]
+                }
+              }
+            },
+            {
+              "name": "Update Service",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  { "key": "Authorization", "value": "Bearer {{adminToken}}" },
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"service_name\": \"Hair Coloring - Premium\",\n  \"default_duration_minutes\": 120\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/admin/services/{{serviceId}}",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["admin", "services", "{{serviceId}}"]
+                }
+              }
+            },
+            {
+              "name": "Delete Service",
+              "request": {
+                "method": "DELETE",
+                "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/services/{{serviceId}}",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["admin", "services", "{{serviceId}}"]
+                }
+              }
+            },
+            {
+              "name": "Toggle Service Availability",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  { "key": "Authorization", "value": "Bearer {{adminToken}}" },
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"is_available\": false\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/admin/services/{{serviceId}}/availability",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["admin", "services", "{{serviceId}}", "availability"]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Categories",
+          "item": [
+            {
+              "name": "Get All Categories",
+              "request": {
+                "method": "GET",
+                "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/categories",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["admin", "categories"]
+                }
+              }
+            },
+            {
+              "name": "Get Category By ID",
+              "request": {
+                "method": "GET",
+                "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/categories/1",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["admin", "categories", "1"]
+                }
+              }
+            },
+            {
+              "name": "Create Category",
+              "request": {
+                "method": "POST",
+                "header": [
+                  { "key": "Authorization", "value": "Bearer {{adminToken}}" },
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"category_name\": \"Hair Care\",\n  \"category_description\": \"All hair related services\",\n  \"icon\": \"hair_icon\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/admin/categories",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["admin", "categories"]
+                }
+              }
+            },
+            {
+              "name": "Update Category",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  { "key": "Authorization", "value": "Bearer {{adminToken}}" },
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"category_name\": \"Hair & Grooming\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/admin/categories/1",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["admin", "categories", "1"]
+                }
+              }
+            },
+            {
+              "name": "Delete Category",
+              "request": {
+                "method": "DELETE",
+                "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/categories/1",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["admin", "categories", "1"]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Bookings",
+          "item": [
+            {
+              "name": "Get All Bookings",
+              "request": {
+                "method": "GET",
+                "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/bookings?status=confirmed&date=2026-06-20",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["admin", "bookings"],
+                  "query": [
+                    { "key": "status", "value": "confirmed" },
+                    { "key": "date", "value": "2026-06-20" }
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Get Booking By ID",
+              "request": {
+                "method": "GET",
+                "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/bookings/{{bookingId}}",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["admin", "bookings", "{{bookingId}}"]
+                }
+              }
+            },
+            {
+              "name": "Create Booking (Admin)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  { "key": "Authorization", "value": "Bearer {{adminToken}}" },
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"user_id\": 3,\n  \"vendor_id\": 2,\n  \"service_ids\": [1],\n  \"booking_date\": \"2026-06-25\",\n  \"booking_time\": \"10:00\",\n  \"total_amount\": 150.00,\n  \"payment_method\": \"cash\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/admin/bookings",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["admin", "bookings"]
+                }
+              }
+            },
+            {
+              "name": "Update Booking Status",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  { "key": "Authorization", "value": "Bearer {{adminToken}}" },
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"booking_status\": \"completed\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/admin/bookings/{{bookingId}}/status",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["admin", "bookings", "{{bookingId}}", "status"]
+                }
+              }
+            },
+            {
+              "name": "Cancel Booking (Admin)",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  { "key": "Authorization", "value": "Bearer {{adminToken}}" },
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"cancellation_reason\": \"Admin cancelled due to vendor issue\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/admin/bookings/{{bookingId}}/cancel",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["admin", "bookings", "{{bookingId}}", "cancel"]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Notifications",
+          "item": [
+            {
+              "name": "Send Notification (Admin)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  { "key": "Authorization", "value": "Bearer {{adminToken}}" },
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"user_ids\": [1, 2, 3],\n  \"title\": \"Platform Update\",\n  \"message\": \"We have added new features. Please update the app.\",\n  \"notification_type\": \"general\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/admin/send-notification",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["admin", "send-notification"]
+                }
+              }
+            },
+            {
+              "name": "Check FCM Tokens",
+              "request": {
+                "method": "GET",
+                "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/fcm-tokens",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["admin", "fcm-tokens"]
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+
+  ]
+}
