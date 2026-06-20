@@ -863,18 +863,37 @@ const updateVendorService = async (req, res) => {
     values.push(service_id);
 
     const query = `
-      UPDATE vendor_services 
+      UPDATE vendor_services
       SET ${updates.join(', ')}
       WHERE vendor_service_id = $${paramCount}
-      RETURNING *
+      RETURNING vendor_service_id
     `;
 
     const result = await db.query(query, values);
 
+    // Return full service data so Flutter can parse VendorService correctly
+    const fullService = await db.query(
+      `SELECT
+         vs.vendor_service_id,
+         vs.service_id,
+         sm.service_name,
+         sm.service_description  AS description,
+         sm.category,
+         vs.price,
+         sm.default_duration_minutes AS duration_minutes,
+         vs.is_available,
+         sm.image_url,
+         vs.created_at
+       FROM vendor_services vs
+       JOIN services_master sm ON sm.service_id = vs.service_id
+       WHERE vs.vendor_service_id = $1`,
+      [result.rows[0].vendor_service_id]
+    );
+
     res.json({
       success: true,
       message: 'Service updated successfully.',
-      data: result.rows[0]
+      data: fullService.rows[0]
     });
 
   } catch (error) {
