@@ -18,11 +18,7 @@ const getDashboardStats = async (req, res) => {
         SUM(CASE WHEN booking_status = 'cancelled' THEN 1 ELSE 0 END) as cancelled_bookings
       FROM bookings
       WHERE user_id = $1 AND status = 'active'`,
-<<<<<<< HEAD
-      [customerId]
-=======
         [customerId]
->>>>>>> 420b244 (Fixes in auth)
     );
 
     // Get upcoming bookings
@@ -132,11 +128,7 @@ const getAllShops = async (req, res) => {
       FROM users u
       INNER JOIN vendor_shop_details vsd ON u.user_id = vsd.user_id
       LEFT JOIN vendor_metrics vm ON u.user_id = vm.vendor_id
-<<<<<<< HEAD
-      WHERE u.user_type = 'vendor' 
-=======
       WHERE u.user_type = 'VENDOR' 
->>>>>>> 420b244 (Fixes in auth)
         AND u.status = 'active' 
         AND u.status = 'active' 
         AND vsd.status = 'active'
@@ -354,11 +346,7 @@ const getAvailableSlots = async (req, res) => {
 
     // Get shop details
     const shop = await db.query(
-<<<<<<< HEAD
-      `SELECT 
-=======
         `SELECT 
->>>>>>> 420b244 (Fixes in auth)
         user_id,
         open_time,
         close_time,
@@ -515,14 +503,9 @@ const createBooking = async (req, res) => {
 
     // Verify vendor
     const vendorCheck = await client.query(
-<<<<<<< HEAD
-      'SELECT user_id, status FROM users WHERE user_id = $1 AND user_type = $2 AND status = $3',
-      [vendor_id, 'VENDOR', 'active']
-=======
         `SELECT user_id FROM users 
        WHERE user_id = $1 AND user_type = 'VENDOR' AND status = 'active'`,
         [vendor_id]
->>>>>>> 420b244 (Fixes in auth)
     );
 
     if (!vendorCheck.rows.length) {
@@ -533,9 +516,6 @@ const createBooking = async (req, res) => {
       });
     }
 
-<<<<<<< HEAD
-    if (vendorCheck.rows[0].status !== 'active') {
-=======
     // Get shop details
     const shopDetails = await client.query(
         `SELECT no_of_seats, shop_id 
@@ -544,7 +524,6 @@ const createBooking = async (req, res) => {
     );
 
     if (!shopDetails.rows.length) {
->>>>>>> 420b244 (Fixes in auth)
       await client.query('ROLLBACK');
       return res.status(404).json({
         success: false,
@@ -553,14 +532,6 @@ const createBooking = async (req, res) => {
     }
 
     // Check slot availability
-<<<<<<< HEAD
-    const shopDetails = await client.query(
-      'SELECT no_of_seats FROM vendor_shop_details WHERE user_id = $1',
-      [vendor_id]
-    );
-
-=======
->>>>>>> 420b244 (Fixes in auth)
     const existingBookings = await client.query(
         `SELECT COUNT(*) 
        FROM bookings
@@ -622,11 +593,7 @@ const createBooking = async (req, res) => {
 
     // Insert booking
     const bookingResult = await client.query(
-<<<<<<< HEAD
-      `INSERT INTO bookings (
-=======
         `INSERT INTO bookings (
->>>>>>> 420b244 (Fixes in auth)
         user_id,
         vendor_id,
         booking_date,
@@ -637,12 +604,6 @@ const createBooking = async (req, res) => {
         payment_status,
         customer_notes,
         created_at,
-<<<<<<< HEAD
-        updated_at
-      ) VALUES ($1, $2, $3, $4, $5, 'confirmed', 'cash', 'pending', $6, NOW(), NOW())
-      RETURNING booking_id, booking_date, booking_time, total_amount`,
-      [customerId, vendor_id, booking_date, booking_time, totalPrice, [notes]]
-=======
         updated_at,
         status
       ) VALUES (
@@ -660,7 +621,6 @@ const createBooking = async (req, res) => {
           'pending',
           notes ? [notes] : [],
         ]
->>>>>>> 420b244 (Fixes in auth)
     );
 
     const bookingId = bookingResult.rows[0].booking_id;
@@ -686,19 +646,6 @@ const createBooking = async (req, res) => {
           start_time,
           end_time,
           duration_minutes,
-<<<<<<< HEAD
-          created_at
-        ) VALUES ($1, $2, $3, $4, $5, $6,$7, NOW())`,
-        [
-          booking.booking_id,
-          service.vendor_service_id,
-          serviceData.rows[0].service_name,
-          serviceData.rows[0].price,
-          '10:00', // Placeholder start time
-          '11:00',
-          serviceData.rows[0].default_duration_minutes
-        ]
-=======
           created_at,
           status
         ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), 'active')`,
@@ -711,7 +658,6 @@ const createBooking = async (req, res) => {
             endTime,           // ✅ end_time
             service.default_duration_minutes,
           ]
->>>>>>> 420b244 (Fixes in auth)
       );
 
       // Next service starts when this one ends
@@ -803,27 +749,6 @@ const getMyBookings = async (req, res) => {
         CAST(b.total_amount AS DECIMAL(10,2)) AS total_price,
         b.booking_status AS status,
         b.payment_status,
-<<<<<<< HEAD
-        b.customer_notes,
-        b.created_at,
-        vsd.shop_name,
-        vsd.shop_address,
-        vsd.city,
-        up.name as vendor_name,
-        u.phone_number as vendor_phone,
-        (SELECT document_url FROM vendor_documents 
-         WHERE vendor_id = b.vendor_id 
-           AND document_type = 'shop_profile_image' 
-           AND status = 'active' 
-         LIMIT 1) as shop_image,
-        (SELECT COUNT(*) FROM booking_services 
-         WHERE booking_id = b.booking_id AND status = 'active') as services_count
-      FROM bookings b
-      INNER JOIN vendor_shop_details vsd ON b.vendor_id = vsd.user_id
-      LEFT JOIN users u ON b.vendor_id = u.user_id
-      LEFT JOIN user_profiles up ON u.user_id = up.user_id AND up.is_current = true
-      WHERE b.user_id = $1 AND b.status = 'active'
-=======
         b.payment_method,
         cp.name AS customer_name,
         cu.phone_number AS customer_phone,
@@ -866,7 +791,6 @@ const getMyBookings = async (req, res) => {
 
       WHERE b.user_id = $1
         AND b.status = 'active'
->>>>>>> 420b244 (Fixes in auth)
     `;
 
     const params = [customerId];
@@ -1023,11 +947,7 @@ const cancelBooking = async (req, res) => {
         `SELECT booking_id, vendor_id, booking_status, booking_date 
        FROM bookings 
        WHERE booking_id = $1 AND user_id = $2 AND status = 'active'`,
-<<<<<<< HEAD
-      [bookingId, customerId]
-=======
         [bookingId, customerId]
->>>>>>> 420b244 (Fixes in auth)
     );
 
     if (booking.rows.length === 0) {
@@ -1138,15 +1058,9 @@ const addReview = async (req, res) => {
 
     // Check if booking exists and is completed
     const booking = await db.query(
-<<<<<<< HEAD
-      `SELECT vendor_id, booking_status FROM bookings 
-       WHERE booking_id = $1 AND user_id = $2 AND status = 'active'`,
-      [booking_id, customerId]
-=======
         `SELECT vendor_id, booking_status FROM bookings 
        WHERE booking_id = $1 AND user_id = $2 AND status = 'active'`,
         [booking_id, customerId]
->>>>>>> 420b244 (Fixes in auth)
     );
 
     if (booking.rows.length === 0) {
