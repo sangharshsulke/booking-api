@@ -206,6 +206,51 @@ const verifyOTP = async (req, res) => {
           [userId]
       );
 
+      // ── VENDOR: compute onboarding status so the app routes correctly ──
+      let vendorOnboardingFields = {};
+      if (finalUserType === 'VENDOR') {
+        const shopRow = await client.query(
+          `SELECT shop_id, verification_status
+           FROM vendor_shop_details
+           WHERE user_id = $1
+           LIMIT 1`,
+          [userId]
+        );
+
+        const hasShop = shopRow.rows.length > 0;
+        const shopId = hasShop ? shopRow.rows[0].shop_id : null;
+        const verificationStatusStr = hasShop ? shopRow.rows[0].verification_status : 'pending';
+
+        // Map string status → int expected by Flutter User model
+        // 'approved' → 1, 'rejected' → 2, 'pending' / anything else → 0
+        const verificationStatusInt =
+          verificationStatusStr === 'approved' ? 1
+          : verificationStatusStr === 'rejected' ? 2
+          : 0;
+
+        let hasServices = false;
+        if (hasShop) {
+          const svcRow = await client.query(
+            `SELECT 1 FROM vendor_services
+             WHERE vendor_id = $1 AND status = 'active'
+             LIMIT 1`,
+            [userId]
+          );
+          hasServices = svcRow.rows.length > 0;
+        }
+
+        // onboarding_step: 1 = no shop yet, 2 = shop done but no services, 3 = fully complete
+        const onboardingStep = !hasShop ? 1 : !hasServices ? 2 : 3;
+        const onboardingCompleted = hasShop && hasServices;
+
+        vendorOnboardingFields = {
+          shop_id: shopId,
+          onboarding_step: onboardingStep,
+          onboarding_completed: onboardingCompleted,
+          verification_status: verificationStatusInt,
+        };
+      }
+
       await client.query('COMMIT');
 
       // B15: embed device_id in JWT
@@ -224,6 +269,7 @@ const verifyOTP = async (req, res) => {
           profile_picture: userData.profile_picture,
           role: finalUserType,
           created_at: userData.created_at,
+          ...vendorOnboardingFields,
         },
         token,
       };
