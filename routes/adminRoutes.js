@@ -47,6 +47,9 @@ router.put('/vendors/:id/shop/images/:imageId/primary', adminController.setShopP
 router.get('/vendors/:id/documents', adminController.getVendorDocuments);
 router.post('/vendors/:id/documents', adminController.uploadVendorDocument);
 
+// Shop image approval queue — pending images across all vendors
+router.get('/images/pending', adminController.getPendingShopImages);
+
 // Document verification (multiple path styles — all map to same handler)
 router.put('/documents/:documentId/verification', adminController.updateDocumentVerification);
 router.put('/vendors/:id/documents/:documentId/verify', adminController.updateDocumentVerification);

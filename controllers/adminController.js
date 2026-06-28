@@ -3114,6 +3114,43 @@ const adminRemoveVendorService = async (req, res) => {
   }
 };
 
+// ─── Get all pending shop images (for admin approval queue) ───────────────────
+const getPendingShopImages = async (req, res) => {
+  try {
+    const result = await db.query(
+      `SELECT
+         vd.document_id,
+         vd.vendor_id,
+         vd.document_url,
+         vd.document_type,
+         vd.is_primary,
+         vd.verification_status,
+         vd.admin_comments,
+         vd.created_at,
+         vsd.shop_name,
+         up.name AS vendor_name,
+         u.phone_number
+       FROM vendor_documents vd
+       INNER JOIN users u ON vd.vendor_id = u.user_id
+       LEFT JOIN vendor_shop_details vsd ON vd.vendor_id = vsd.user_id
+       LEFT JOIN user_profiles up ON u.user_id = up.user_id AND up.is_current = true
+       WHERE vd.document_type IN ('shop_profile_image', 'shop_gallery_image')
+         AND vd.status = 'active'
+         AND vd.verification_status = 'pending'
+       ORDER BY vd.created_at ASC`
+    );
+
+    res.json({
+      success: true,
+      data: result.rows,
+      total: result.rows.length
+    });
+  } catch (error) {
+    console.error('getPendingShopImages error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 module.exports = {
   getDashboardStats,
   getAllUsers,
@@ -3155,4 +3192,5 @@ module.exports = {
   checkUserFCMTokens,
   adminAddVendorService,
   adminRemoveVendorService,
+  getPendingShopImages,
 };

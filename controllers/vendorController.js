@@ -2186,19 +2186,19 @@ const uploadShopProfileImage = [
           [vendorId]
       );
 
-      // Insert new profile image
+      // Insert new profile image — starts as 'pending' until admin approves
       const result = await db.query(
           `INSERT INTO vendor_documents (
           vendor_id, document_url, document_type, is_primary,
           verification_status, created_at, updated_at
-        ) VALUES ($1, $2, 'shop_profile_image', true, 'approved', NOW(), NOW())
+        ) VALUES ($1, $2, 'shop_profile_image', true, 'pending', NOW(), NOW())
         RETURNING *`,
           [vendorId, imageUrl]
       );
 
       res.json({
         success: true,
-        message: 'Profile image uploaded successfully.',
+        message: 'Profile image uploaded successfully. It will be visible to customers after admin approval.',
         data: result.rows[0]
       });
 
@@ -2259,12 +2259,12 @@ const uploadShopGalleryImages = [
         const imageUrl = `/uploads/shops/${file.filename}`;
         const isPrimary = i === 0 && currentCount.rows[0].count === '0';
 
+        // Gallery images start as 'pending' until admin approves
         const result = await client.query(
-
             `INSERT INTO vendor_documents (
             vendor_id, document_url, document_type, is_primary,
             verification_status, created_at, updated_at
-          ) VALUES ($1, $2, 'shop_gallery_image', $3, 'approved', NOW(), NOW())
+          ) VALUES ($1, $2, 'shop_gallery_image', $3, 'pending', NOW(), NOW())
           RETURNING *`,
             [vendorId, imageUrl, isPrimary]
         );
@@ -2276,7 +2276,7 @@ const uploadShopGalleryImages = [
 
       res.json({
         success: true,
-        message: `${uploadedImages.length} image(s) uploaded successfully.`,
+        message: `${uploadedImages.length} image(s) uploaded successfully. They will be visible to customers after admin approval.`,
         data: uploadedImages
       });
 

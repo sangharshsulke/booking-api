@@ -155,10 +155,11 @@ const getAllShops = async (req, res) => {
         vm.average_rating,
         vm.total_reviews,
         vm.total_bookings,
-        (SELECT document_url FROM vendor_documents 
-         WHERE vendor_id = u.user_id 
+        (SELECT document_url FROM vendor_documents
+         WHERE vendor_id = u.user_id
            AND document_type IN ('shop_profile_image', 'shop_gallery_image')
-           AND status = 'active' 
+           AND status = 'active'
+           AND verification_status = 'approved'
          ORDER BY is_primary DESC, created_at DESC
          LIMIT 1) as profile_image,
         (SELECT COUNT(*) FROM vendor_services vs 
@@ -329,13 +330,14 @@ const getShopDetails = async (req, res) => {
 
     const shopData = shop.rows[0];
 
-    // Get shop images
+    // Get shop images — only approved images are visible to customers
     const images = await db.query(
         `SELECT document_id, document_url, document_type, is_primary
        FROM vendor_documents
-       WHERE vendor_id = $1 
+       WHERE vendor_id = $1
          AND document_type IN ('shop_profile_image', 'shop_gallery_image')
          AND status = 'active'
+         AND verification_status = 'approved'
        ORDER BY is_primary DESC, created_at DESC`,
         [shopData.vendor_id]
     );
@@ -1244,10 +1246,11 @@ const getBookingDetails = async (req, res) => {
         vsd.longitude,
         up.name as vendor_name,
         u.phone_number as vendor_phone,
-        (SELECT document_url FROM vendor_documents 
-         WHERE vendor_id = b.vendor_id 
-           AND document_type = 'shop_profile_image' 
-           AND status = 'active' 
+        (SELECT document_url FROM vendor_documents
+         WHERE vendor_id = b.vendor_id
+           AND document_type = 'shop_profile_image'
+           AND status = 'active'
+           AND verification_status = 'approved'
          LIMIT 1) as shop_image
       FROM bookings b
       INNER JOIN vendor_shop_details vsd ON b.vendor_id = vsd.user_id
