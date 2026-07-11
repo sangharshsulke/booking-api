@@ -42,6 +42,8 @@ const getVendorProfile = async (req, res) => {
         vs.shop_address,
         vs.city as shop_city,
         vs.state as shop_state,
+        vs.pincode,
+        vs.shop_description AS description,
         vs.latitude,
         vs.longitude,
         vs.open_time,
@@ -80,9 +82,10 @@ const getVendorProfile = async (req, res) => {
 
     // Get shop images
     const images = await db.query(
-        `SELECT document_id, document_url, document_type, is_primary
+        `SELECT document_id, document_url, document_type, is_primary,
+              verification_status, admin_comments
        FROM vendor_documents
-       WHERE vendor_id = $1 
+       WHERE vendor_id = $1
          AND document_type IN ('shop_profile_image', 'shop_gallery_image')
          AND status = 'active'
        ORDER BY is_primary DESC, created_at DESC`,
@@ -190,6 +193,8 @@ const getVendorShop = async (req, res) => {
       shop_address,
       city,
       state,
+      pincode,
+      shop_description AS description,
       latitude,
       longitude,
       open_time,
@@ -211,7 +216,7 @@ const getVendorShop = async (req, res) => {
       created_at,
       updated_at,
       deleted_at
-   FROM vendor_shop_details 
+   FROM vendor_shop_details
    WHERE user_id = $1`,
         [vendorId]
     );
@@ -256,7 +261,7 @@ const createOrUpdateVendorShop = async (req, res) => {
   try {
     const vendorId = req.user.userId;
     const {
-      shop_name, shop_address, city, state,
+      shop_name, shop_address, city, state, pincode, description,
       latitude, longitude, open_time, close_time,
       break_start_time, break_end_time, weekly_holiday,
       no_of_seats, no_of_workers, business_license,
@@ -288,8 +293,9 @@ const createOrUpdateVendorShop = async (req, res) => {
     break_start_time = $9, break_end_time = $10, weekly_holiday = $11,
     no_of_seats = $12, no_of_workers = $13, business_license = $14,
     tax_number = $15, bank_account_number = $16, bank_ifsc_code = $17,
+    pincode = $18, shop_description = $19,
     updated_at = NOW()
-  WHERE user_id = $18
+  WHERE user_id = $20
   RETURNING
     shop_id,
     user_id AS vendor_id,
@@ -299,6 +305,7 @@ const createOrUpdateVendorShop = async (req, res) => {
     no_of_seats, no_of_workers,
     verification_status, admin_comments,
     business_license, tax_number, bank_account_number, bank_ifsc_code,
+    pincode, shop_description AS description,
     status, created_at, updated_at`,
           [
             shop_name, shop_address, city, state,
@@ -306,6 +313,7 @@ const createOrUpdateVendorShop = async (req, res) => {
             break_start_time || null, break_end_time || null, weekly_holiday || null,
             no_of_seats || 1, no_of_workers || 1, business_license || null,
             tax_number || null, bank_account_number || null, bank_ifsc_code || null,
+            pincode || null, description || null,
             vendorId
           ]
       );
@@ -355,15 +363,17 @@ const createOrUpdateVendorShop = async (req, res) => {
           break_start_time, break_end_time, weekly_holiday,
           no_of_seats, no_of_workers, business_license,
           tax_number, bank_account_number, bank_ifsc_code,
+          pincode, shop_description,
           verification_status, created_at, updated_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, 'pending', NOW(), NOW())
-        RETURNING *`,
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, 'pending', NOW(), NOW())
+        RETURNING *, shop_description AS description`,
           [
             vendorId, shop_name, shop_address, city, state,
             latitude, longitude, open_time, close_time,
             break_start_time, break_end_time, weekly_holiday,
             no_of_seats || 1, no_of_workers || 1, business_license,
-            tax_number, bank_account_number, bank_ifsc_code
+            tax_number, bank_account_number, bank_ifsc_code,
+            pincode || null, description || null
           ]
       );
 
@@ -2076,8 +2086,11 @@ const getDashboardStats = async (req, res) => {
       FROM bookings b
       LEFT JOIN users u ON b.user_id = u.user_id
       LEFT JOIN user_profiles up ON u.user_id = up.user_id AND up.is_current = true
-      WHERE b.vendor_id = $1 
-        AND b.booking_date >= CURRENT_DATE
+      WHERE b.vendor_id = $1
+        AND (
+          b.booking_date > CURRENT_DATE
+          OR (b.booking_date = CURRENT_DATE AND b.booking_time > CURRENT_TIME)
+        )
         AND b.booking_status IN ('confirmed', 'pending')
         AND b.status = 'active'
       ORDER BY b.booking_date ASC, b.booking_time ASC
@@ -2300,9 +2313,10 @@ const getVendorImages = async (req, res) => {
     const vendorId = req.user.userId;
 
     const result = await db.query(
-        `SELECT document_id, document_url, document_type, is_primary, created_at
+        `SELECT document_id, document_url, document_type, is_primary,
+              verification_status, admin_comments, created_at
        FROM vendor_documents
-       WHERE vendor_id = $1 
+       WHERE vendor_id = $1
          AND document_type IN ('shop_profile_image', 'shop_gallery_image')
          AND status = 'active'
        ORDER BY is_primary DESC, created_at DESC`,

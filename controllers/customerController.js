@@ -56,11 +56,14 @@ const getDashboardStats = async (req, res) => {
       INNER JOIN vendor_shop_details vsd ON b.vendor_id = vsd.user_id
       LEFT JOIN users u ON b.vendor_id = u.user_id
       LEFT JOIN user_profiles up ON u.user_id = up.user_id AND up.is_current = true
-      WHERE b.user_id = $1 
+      WHERE b.user_id = $1
         AND b.booking_status = 'confirmed'
-        AND b.booking_date >= CURRENT_DATE
+        AND (
+          b.booking_date > CURRENT_DATE
+          OR (b.booking_date = CURRENT_DATE AND b.booking_time > CURRENT_TIME)
+        )
         AND b.status = 'active'
-      ORDER BY b.booking_date ASC
+      ORDER BY b.booking_date ASC, b.booking_time ASC
       LIMIT 5`,
         [customerId]
     );
@@ -774,7 +777,7 @@ const createBooking = async (req, res) => {
 
     // Fetch full booking for response
     const bookingData = await db.query(
-        `SELECT 
+        `SELECT
         b.booking_id, b.user_id AS customer_id, b.vendor_id, vsd.shop_id,
         TO_CHAR(b.booking_date, 'YYYY-MM-DD') AS booking_date,
         b.booking_time AS time_slot, b.booking_status AS status,
@@ -791,6 +794,60 @@ const createBooking = async (req, res) => {
        WHERE b.booking_id = $2`,
         [totalDuration, bookingId]
     );
+
+    // Notify vendor of the new booking request (in-app + push).
+    // Previously missing entirely — vendors only found out about new
+    // bookings by manually refreshing the dashboard.
+    try {
+      const row = bookingData.rows[0] || {};
+      const customerName = row.customer_name || 'A customer';
+      const title = '📅 New Booking Request';
+      const body = `${customerName} booked ${row.shop_name ? 'at ' + row.shop_name : 'a service'} on ${row.booking_date} at ${timeSlot}.`;
+
+      await db.query(
+          `INSERT INTO notifications
+           (user_id, title, message, notification_type, is_read, created_at)
+         VALUES ($1, $2, $3, 'booking_created', false, NOW())
+         ON CONFLICT DO NOTHING`,
+          [vendorIdInt, title, body]
+      ).catch(dbErr => console.warn('⚠️ Vendor notification insert failed:', dbErr.message));
+
+      const vendorFCM = await db.query(
+          `SELECT fcm_token FROM user_profiles WHERE user_id = $1 AND is_current = true`,
+          [vendorIdInt]
+      );
+
+      const fcmToken = vendorFCM.rows[0]?.fcm_token;
+      if (fcmToken && admin.apps.length) {
+        await admin.messaging().send({
+          token: fcmToken,
+          data: {
+            type: 'BOOKING_CREATED',
+            booking_id: String(bookingId),
+            title,
+            body,
+          },
+          android: {
+            priority: 'high',
+            notification: {
+              title,
+              body,
+              channelId: 'general_notifications',
+              sound: 'default',
+              priority: 'high',
+            },
+          },
+          apns: {
+            headers: { 'apns-priority': '10' },
+            payload: {
+              aps: { alert: { title, body }, sound: 'default', badge: 1 },
+            },
+          },
+        });
+      }
+    } catch (notifError) {
+      console.error('⚠️ New booking vendor notification failed:', notifError.message);
+    }
 
     return res.status(201).json({
       success: true,

@@ -83,6 +83,8 @@ CREATE TABLE IF NOT EXISTS public.vendor_shop_details
     shop_address text COLLATE pg_catalog."default" NOT NULL,
     city character varying(50) COLLATE pg_catalog."default" NOT NULL,
     state character varying(50) COLLATE pg_catalog."default" NOT NULL,
+    pincode character varying(10) COLLATE pg_catalog."default",
+    shop_description text COLLATE pg_catalog."default",
     latitude numeric(10, 8),
     longitude numeric(11, 8),
     open_time time without time zone NOT NULL,
