@@ -208,6 +208,51 @@ const verifyOTP = async (req, res) => {
           [userId]
       );
 
+      // ── VENDOR: compute onboarding status so the app routes correctly ──
+      let vendorOnboardingFields = {};
+      if (finalUserType === 'VENDOR') {
+        const shopRow = await client.query(
+          `SELECT shop_id, verification_status
+           FROM vendor_shop_details
+           WHERE user_id = $1
+           LIMIT 1`,
+          [userId]
+        );
+
+        const hasShop = shopRow.rows.length > 0;
+        const shopId = hasShop ? shopRow.rows[0].shop_id : null;
+        const verificationStatusStr = hasShop ? shopRow.rows[0].verification_status : 'pending';
+
+        // Map string status → int expected by Flutter User model
+        // 'approved' → 1, 'rejected' → 2, 'pending' / anything else → 0
+        const verificationStatusInt =
+          verificationStatusStr === 'approved' ? 1
+          : verificationStatusStr === 'rejected' ? 2
+          : 0;
+
+        let hasServices = false;
+        if (hasShop) {
+          const svcRow = await client.query(
+            `SELECT 1 FROM vendor_services
+             WHERE vendor_id = $1 AND status = 'active'
+             LIMIT 1`,
+            [userId]
+          );
+          hasServices = svcRow.rows.length > 0;
+        }
+
+        // onboarding_step: 1 = no shop yet, 2 = shop done but no services, 3 = fully complete
+        const onboardingStep = !hasShop ? 1 : !hasServices ? 2 : 3;
+        const onboardingCompleted = hasShop && hasServices;
+
+        vendorOnboardingFields = {
+          shop_id: shopId,
+          onboarding_step: onboardingStep,
+          onboarding_completed: onboardingCompleted,
+          verification_status: verificationStatusInt,
+        };
+      }
+
       await client.query('COMMIT');
 
       // B15: embed device_id in JWT
@@ -226,6 +271,7 @@ const verifyOTP = async (req, res) => {
           profile_picture: userData.profile_picture,
           role: finalUserType,
           created_at: userData.created_at,
+          ...vendorOnboardingFields,
         },
         token,
       };
@@ -340,7 +386,7 @@ const getProfile = async (req, res) => {
         `SELECT u.user_id, u.phone_number, u.email, u.user_type as role, u.status,
               u.phone_verified, u.created_at,
               up.name, up.city, up.state, up.gender, up.profile_picture, up.last_login_at,
-              vsd.shop_id
+              vsd.shop_id, vsd.verification_status as shop_verification_status
        FROM users u
        LEFT JOIN user_profiles up ON u.user_id = up.user_id AND up.is_current = true
        LEFT JOIN vendor_shop_details vsd ON u.user_id = vsd.user_id
@@ -352,7 +398,41 @@ const getProfile = async (req, res) => {
       return res.status(404).json({ success: false, message: 'User not found.' });
     }
 
-    res.json({ success: true, message: 'Profile fetched', data: result.rows[0] });
+    const userData = result.rows[0];
+
+    // ── VENDOR: append onboarding status ────────────────────────────────
+    let vendorFields = {};
+    if (userData.role === 'VENDOR') {
+      const hasShop = !!userData.shop_id;
+      const verificationStatusStr = userData.shop_verification_status || 'pending';
+      const verificationStatusInt =
+        verificationStatusStr === 'approved' ? 1
+        : verificationStatusStr === 'rejected' ? 2
+        : 0;
+
+      let hasServices = false;
+      if (hasShop) {
+        const svcRow = await db.query(
+          `SELECT 1 FROM vendor_services
+           WHERE vendor_id = $1 AND status = 'active'
+           LIMIT 1`,
+          [userId]
+        );
+        hasServices = svcRow.rows.length > 0;
+      }
+
+      const onboardingStep = !hasShop ? 1 : !hasServices ? 2 : 3;
+      vendorFields = {
+        onboarding_completed: hasShop && hasServices,
+        onboarding_step: onboardingStep,
+        verification_status: verificationStatusInt,
+      };
+    }
+
+    // Remove internal field before sending
+    delete userData.shop_verification_status;
+
+    res.json({ success: true, message: 'Profile fetched', data: { ...userData, ...vendorFields } });
   } catch (error) {
     console.error('Get profile error:', error);
     res.status(500).json({ success: false, message: 'Error fetching profile.', error: error.message });
@@ -583,6 +663,74 @@ const checkUser = async (req, res) => {
 };
 
 
+// ============================================
+// DELETE ACCOUNT (self-service, permanent)
+// DELETE /auth/account
+//
+// Two-step confirmation:
+//   1. App shows an "Are you sure?" dialog explaining that all data
+//      (bookings, reviews, shop details, etc.) will be permanently erased.
+//   2. Only if the customer confirms does the app call this endpoint with
+//      { confirm: true }. Without that flag the request is rejected, so a
+//      stray/accidental call can never delete an account.
+//
+// The actual erase is a hard DELETE on the users row. Every related table
+// (user_profiles, vendor_shop_details, vendor_documents, vendor_services,
+// bookings, booking_services, vendor_metrics, reviews, vendor_holidays,
+// vendor_early_closures, notifications) has an ON DELETE CASCADE foreign
+// key back to users, so the database wipes all of that user's data in one
+// transaction-safe statement — no manual table-by-table cleanup needed.
+// ============================================
+const deleteAccount = async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const { confirm } = req.body;
+
+    if (confirm !== true) {
+      return res.status(400).json({
+        success: false,
+        code: 'CONFIRMATION_REQUIRED',
+        message: 'Account deletion is permanent and erases all your data. Resend this request with { "confirm": true } to proceed.',
+      });
+    }
+
+    const userCheck = await db.query(
+        'SELECT user_type FROM users WHERE user_id = $1',
+        [userId]
+    );
+
+    if (userCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Account not found.' });
+    }
+
+    // Guard rail: a SUPERADMIN must never be able to delete themselves via
+    // this self-service endpoint (mirrors the same protection admins have
+    // when deleting other users).
+    if (userCheck.rows[0].user_type === 'SUPERADMIN') {
+      return res.status(403).json({
+        success: false,
+        message: 'SUPERADMIN accounts cannot be deleted from here. Contact another SUPERADMIN.',
+      });
+    }
+
+    await db.query('DELETE FROM users WHERE user_id = $1', [userId]);
+
+    console.log(`🗑️ Account permanently deleted: user_id=${userId}`);
+
+    res.json({
+      success: true,
+      message: 'Your account and all associated data have been permanently deleted.',
+    });
+  } catch (error) {
+    console.error('❌ Delete account error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error deleting account.',
+      error: error.message,
+    });
+  }
+};
+
 module.exports = {
   register,
   login,
@@ -592,4 +740,5 @@ module.exports = {
   verifyOTP,
   logout,
   checkUser,
+  deleteAccount,
 };

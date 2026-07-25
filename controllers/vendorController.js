@@ -42,6 +42,8 @@ const getVendorProfile = async (req, res) => {
         vs.shop_address,
         vs.city as shop_city,
         vs.state as shop_state,
+        vs.pincode,
+        vs.shop_description AS description,
         vs.latitude,
         vs.longitude,
         vs.open_time,
@@ -52,6 +54,7 @@ const getVendorProfile = async (req, res) => {
         vs.no_of_seats,
         vs.no_of_workers,
         vs.verification_status,
+        vs.verification_status AS approval_status,
         vs.business_license,
         vs.tax_number,
         vs.bank_account_number,
@@ -79,9 +82,10 @@ const getVendorProfile = async (req, res) => {
 
     // Get shop images
     const images = await db.query(
-        `SELECT document_id, document_url, document_type, is_primary
+        `SELECT document_id, document_url, document_type, is_primary,
+              verification_status, admin_comments
        FROM vendor_documents
-       WHERE vendor_id = $1 
+       WHERE vendor_id = $1
          AND document_type IN ('shop_profile_image', 'shop_gallery_image')
          AND status = 'active'
        ORDER BY is_primary DESC, created_at DESC`,
@@ -189,6 +193,8 @@ const getVendorShop = async (req, res) => {
       shop_address,
       city,
       state,
+      pincode,
+      shop_description AS description,
       latitude,
       longitude,
       open_time,
@@ -210,7 +216,7 @@ const getVendorShop = async (req, res) => {
       created_at,
       updated_at,
       deleted_at
-   FROM vendor_shop_details 
+   FROM vendor_shop_details
    WHERE user_id = $1`,
         [vendorId]
     );
@@ -255,7 +261,7 @@ const createOrUpdateVendorShop = async (req, res) => {
   try {
     const vendorId = req.user.userId;
     const {
-      shop_name, shop_address, city, state,
+      shop_name, shop_address, city, state, pincode, description,
       latitude, longitude, open_time, close_time,
       break_start_time, break_end_time, weekly_holiday,
       no_of_seats, no_of_workers, business_license,
@@ -287,8 +293,9 @@ const createOrUpdateVendorShop = async (req, res) => {
     break_start_time = $9, break_end_time = $10, weekly_holiday = $11,
     no_of_seats = $12, no_of_workers = $13, business_license = $14,
     tax_number = $15, bank_account_number = $16, bank_ifsc_code = $17,
+    pincode = $18, shop_description = $19,
     updated_at = NOW()
-  WHERE user_id = $18
+  WHERE user_id = $20
   RETURNING
     shop_id,
     user_id AS vendor_id,
@@ -298,6 +305,7 @@ const createOrUpdateVendorShop = async (req, res) => {
     no_of_seats, no_of_workers,
     verification_status, admin_comments,
     business_license, tax_number, bank_account_number, bank_ifsc_code,
+    pincode, shop_description AS description,
     status, created_at, updated_at`,
           [
             shop_name, shop_address, city, state,
@@ -305,6 +313,7 @@ const createOrUpdateVendorShop = async (req, res) => {
             break_start_time || null, break_end_time || null, weekly_holiday || null,
             no_of_seats || 1, no_of_workers || 1, business_license || null,
             tax_number || null, bank_account_number || null, bank_ifsc_code || null,
+            pincode || null, description || null,
             vendorId
           ]
       );
@@ -354,15 +363,17 @@ const createOrUpdateVendorShop = async (req, res) => {
           break_start_time, break_end_time, weekly_holiday,
           no_of_seats, no_of_workers, business_license,
           tax_number, bank_account_number, bank_ifsc_code,
+          pincode, shop_description,
           verification_status, created_at, updated_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, 'pending', NOW(), NOW())
-        RETURNING *`,
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, 'pending', NOW(), NOW())
+        RETURNING *, shop_description AS description`,
           [
             vendorId, shop_name, shop_address, city, state,
             latitude, longitude, open_time, close_time,
             break_start_time, break_end_time, weekly_holiday,
             no_of_seats || 1, no_of_workers || 1, business_license,
-            tax_number, bank_account_number, bank_ifsc_code
+            tax_number, bank_account_number, bank_ifsc_code,
+            pincode || null, description || null
           ]
       );
 
@@ -486,22 +497,17 @@ const updateShopCapacity = async (req, res) => {
 const getAllServicesMaster = async (req, res) => {
   try {
     const result = await db.query(
-        `SELECT 
+        `SELECT
         service_id,
         service_name,
-        service_description as description,
-        default_duration_minutes as duration_minutes,
-        base_price,
-        category,
-        is_available,
-        image_url,
-        requirements,
-        benefits,
+        service_description AS description,
+        default_duration_minutes AS duration_minutes,
         service_type,
         status
-      FROM services_master 
+      FROM services_master
       WHERE status = 'active'
-      ORDER BY category, service_name`
+        AND deleted_at IS NULL
+      ORDER BY service_name`
     );
 
     res.json({
@@ -648,18 +654,16 @@ const addCustomService = async (req, res) => {
     const vendorId = req.user.userId;
     const {
       service_name,
-      category,
       price,
-      duration,          // duration_minutes
       description,
       is_available
     } = req.body;
 
-    // Validation
-    if (!service_name || !category || !price || !duration) {
+    // Validation — duration is fixed at 30 minutes per business rules
+    if (!service_name || !price) {
       return res.status(400).json({
         success: false,
-        message: 'service_name, category, price, and duration are required.'
+        message: 'service_name and price are required.'
       });
     }
 
@@ -670,69 +674,64 @@ const addCustomService = async (req, res) => {
       });
     }
 
-    if (isNaN(duration) || parseInt(duration) <= 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'Duration must be a positive integer (minutes).'
-      });
-    }
-
-    // Insert into services_master as a vendor-specific custom service
+    // Upsert into services_master — reuse existing entry if name already taken
     const masterResult = await db.query(
         `INSERT INTO services_master (
-        service_name,
-        service_description,
-        default_duration_minutes,
-        base_price,
-        category,
-        is_available,
-        service_type,
-        status,
-  
-        created_at,
-        updated_at
-      ) VALUES ($1, $2, $3, $4, $5, true, 'custom', 'active', NOW(), NOW())
-      RETURNING service_id`,
-        [
-          service_name.trim(),
-          description || null,
-          parseInt(duration),
-          parseFloat(price),
-          category.trim(),
-        ]
+          service_name,
+          service_description,
+          default_duration_minutes,
+          service_type,
+          status,
+          created_at,
+          updated_at
+        ) VALUES ($1, $2, 30, 'custom', 'active', NOW(), NOW())
+        ON CONFLICT (service_name) DO UPDATE
+          SET updated_at = NOW()
+        RETURNING service_id`,
+        [service_name.trim(), description || null]
     );
 
     const newServiceId = masterResult.rows[0].service_id;
 
-    // Now link it to the vendor in vendor_services
-    const vendorServiceResult = await db.query(
-        `INSERT INTO vendor_services (
-        vendor_id,
-        service_id,
-        price,
-        is_available,
-        status,
-        created_at
-      ) VALUES ($1, $2, $3, $4, 'active', NOW())
-      RETURNING vendor_service_id`,
-        [
-          vendorId,
-          newServiceId,
-          parseFloat(price),
-          is_available !== false
-        ]
+    // Check if vendor already has this service linked
+    const existing = await db.query(
+        `SELECT vendor_service_id FROM vendor_services
+         WHERE vendor_id = $1 AND service_id = $2`,
+        [vendorId, newServiceId]
     );
+
+    let vendorServiceId;
+    if (existing.rows.length > 0) {
+      // Already linked — update price & availability
+      const updated = await db.query(
+          `UPDATE vendor_services
+           SET price = $1, is_available = $2, status = 'active', updated_at = NOW()
+           WHERE vendor_id = $3 AND service_id = $4
+           RETURNING vendor_service_id`,
+          [parseFloat(price), is_available !== false, vendorId, newServiceId]
+      );
+      vendorServiceId = updated.rows[0].vendor_service_id;
+    } else {
+      // New link
+      const inserted = await db.query(
+          `INSERT INTO vendor_services (
+            vendor_id, service_id, price, is_available, status, created_at
+          ) VALUES ($1, $2, $3, $4, 'active', NOW())
+          RETURNING vendor_service_id`,
+          [vendorId, newServiceId, parseFloat(price), is_available !== false]
+      );
+      vendorServiceId = inserted.rows[0].vendor_service_id;
+    }
 
     res.status(201).json({
       success: true,
       message: 'Custom service added successfully.',
       data: {
-        vendor_service_id: vendorServiceResult.rows[0].vendor_service_id,
+        vendor_service_id: vendorServiceId,
         service_id: newServiceId,
         service_name: service_name.trim(),
-        category: category.trim(),
         price: parseFloat(price),
-        duration_minutes: parseInt(duration),
+        duration_minutes: 30,
         is_available: is_available !== false
       }
     });
@@ -874,18 +873,37 @@ const updateVendorService = async (req, res) => {
     values.push(service_id);
 
     const query = `
-      UPDATE vendor_services 
+      UPDATE vendor_services
       SET ${updates.join(', ')}
       WHERE vendor_service_id = $${paramCount}
-      RETURNING *
+      RETURNING vendor_service_id
     `;
 
     const result = await db.query(query, values);
 
+    // Return full service data so Flutter can parse VendorService correctly
+    const fullService = await db.query(
+      `SELECT
+         vs.vendor_service_id,
+         vs.service_id,
+         sm.service_name,
+         sm.service_description  AS description,
+         sm.category,
+         vs.price,
+         sm.default_duration_minutes AS duration_minutes,
+         vs.is_available,
+         sm.image_url,
+         vs.created_at
+       FROM vendor_services vs
+       JOIN services_master sm ON sm.service_id = vs.service_id
+       WHERE vs.vendor_service_id = $1`,
+      [result.rows[0].vendor_service_id]
+    );
+
     res.json({
       success: true,
       message: 'Service updated successfully.',
-      data: result.rows[0]
+      data: fullService.rows[0]
     });
 
   } catch (error) {
@@ -993,13 +1011,23 @@ const getVendorBookings = async (req, res) => {
     const offset = (page - 1) * limit;
 
     let query = `
-      SELECT 
+      SELECT
         b.*,
         COALESCE(up.name) as customer_name,
         COALESCE(u.phone_number) as customer_phone,
         COALESCE(u.email) as customer_email,
-        (SELECT COUNT(*) FROM booking_services bs 
-         WHERE bs.booking_id = b.booking_id AND bs.status = 'active') as services_count
+        (SELECT COUNT(*) FROM booking_services bs
+         WHERE bs.booking_id = b.booking_id AND bs.status = 'active') as services_count,
+        COALESCE(
+          (SELECT json_agg(json_build_object(
+            'service_name', bs2.service_name,
+            'price', bs2.service_price,
+            'duration_minutes', bs2.duration_minutes
+          ))
+           FROM booking_services bs2
+           WHERE bs2.booking_id = b.booking_id AND bs2.status = 'active'),
+          '[]'::json
+        ) as services
       FROM bookings b
       LEFT JOIN users u ON b.user_id = u.user_id
       LEFT JOIN user_profiles up ON u.user_id = up.user_id AND up.is_current = true
@@ -1286,7 +1314,7 @@ const completeBooking = async (req, res) => {
     const { actual_amount } = req.body;
 
     const booking = await db.query(
-        `SELECT booking_id, user_id, booking_status, total_amount
+        `SELECT booking_id, user_id, booking_status, total_amount, booking_date, booking_time
        FROM bookings
        WHERE booking_id = $1 AND vendor_id = $2 AND status = 'active'`,
         [bookingId, vendorId]
@@ -1296,12 +1324,27 @@ const completeBooking = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Booking not found.' });
     }
 
-    const { booking_status, user_id: customerId, total_amount } = booking.rows[0];
+    const { booking_status, user_id: customerId, total_amount, booking_date, booking_time } = booking.rows[0];
 
     if (booking_status !== 'confirmed') {
       return res.status(400).json({
         success: false,
         message: `Can only complete confirmed bookings. Current status: ${booking_status}`,
+      });
+    }
+
+    // BUG 30: Prevent completing booking before its start time
+    const now = new Date();
+    const bookingStart = new Date(
+      (booking_date instanceof Date
+        ? booking_date.toISOString().split('T')[0]
+        : String(booking_date).split('T')[0])
+      + 'T' + booking_time
+    );
+    if (now < bookingStart) {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot complete booking before its start time.'
       });
     }
 
@@ -1948,19 +1991,38 @@ const getDashboardStats = async (req, res) => {
   try {
     const vendorId = req.user.userId;
 
-    // Get basic stats
+    // Get live stats directly from bookings + reviews tables (source of truth)
     const stats = await db.query(
-        `SELECT 
-        vm.total_bookings,
-        vm.completed_bookings,
-        vm.cancelled_bookings,
-        vm.average_rating,
-        vm.total_reviews,
-        vm.total_revenue
-      FROM vendor_metrics vm
-      WHERE vm.vendor_id = $1`,
+        `SELECT
+        COUNT(b.booking_id)                                                         AS total_bookings,
+        COUNT(b.booking_id) FILTER (WHERE b.booking_status = 'completed')          AS completed_bookings,
+        COUNT(b.booking_id) FILTER (WHERE b.booking_status IN ('rejected','cancelled')) AS cancelled_bookings,
+        COALESCE(SUM(b.total_amount) FILTER (WHERE b.booking_status = 'completed'), 0) AS total_revenue,
+        COALESCE((SELECT AVG(r.rating) FROM reviews r WHERE r.vendor_id = $1), 0)  AS average_rating,
+        COALESCE((SELECT COUNT(*) FROM reviews r WHERE r.vendor_id = $1), 0)       AS total_reviews
+      FROM bookings b
+      WHERE b.vendor_id = $1 AND b.status = 'active'`,
         [vendorId]
     );
+
+    // Keep vendor_metrics in sync
+    if (stats.rows.length > 0) {
+      const s = stats.rows[0];
+      db.query(
+          `INSERT INTO vendor_metrics (vendor_id, total_bookings, completed_bookings, cancelled_bookings, total_revenue, average_rating, total_reviews, updated_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,NOW())
+           ON CONFLICT (vendor_id) DO UPDATE SET
+             total_bookings    = EXCLUDED.total_bookings,
+             completed_bookings= EXCLUDED.completed_bookings,
+             cancelled_bookings= EXCLUDED.cancelled_bookings,
+             total_revenue     = EXCLUDED.total_revenue,
+             average_rating    = EXCLUDED.average_rating,
+             total_reviews     = EXCLUDED.total_reviews,
+             updated_at        = NOW()`,
+          [vendorId, s.total_bookings, s.completed_bookings, s.cancelled_bookings,
+            s.total_revenue, s.average_rating, s.total_reviews]
+      ).catch(e => console.warn('vendor_metrics sync warning:', e.message));
+    }
 
     // Get today's bookings
     const todayBookings = await db.query(
@@ -2024,8 +2086,11 @@ const getDashboardStats = async (req, res) => {
       FROM bookings b
       LEFT JOIN users u ON b.user_id = u.user_id
       LEFT JOIN user_profiles up ON u.user_id = up.user_id AND up.is_current = true
-      WHERE b.vendor_id = $1 
-        AND b.booking_date >= CURRENT_DATE
+      WHERE b.vendor_id = $1
+        AND (
+          b.booking_date > CURRENT_DATE
+          OR (b.booking_date = CURRENT_DATE AND b.booking_time > CURRENT_TIME)
+        )
         AND b.booking_status IN ('confirmed', 'pending')
         AND b.status = 'active'
       ORDER BY b.booking_date ASC, b.booking_time ASC
@@ -2046,15 +2111,16 @@ const getDashboardStats = async (req, res) => {
       success: true,
       message: 'Dashboard analytics loaded successfully.',
       data: {
-        total_bookings: statsData.total_bookings || 0,
-        completed_bookings: statsData.completed_bookings || 0,
-        cancelled_bookings: statsData.cancelled_bookings || 0,
+        total_bookings: parseInt(statsData.total_bookings) || 0,
+        completed_bookings: parseInt(statsData.completed_bookings) || 0,
+        cancelled_bookings: parseInt(statsData.cancelled_bookings) || 0,
         pending_bookings: parseInt(pendingCount.rows[0].count),
         todays_bookings: todayBookings.rows,
         todays_bookings_count: todayBookings.rows.length,
         monthly_revenue: parseFloat(monthlyRevenue.rows[0].revenue),
         average_rating: parseFloat(statsData.average_rating) || 0,
-        total_reviews: statsData.total_reviews || 0,
+        total_reviews: parseInt(statsData.total_reviews) || 0,
+        total_revenue: parseFloat(statsData.total_revenue) || 0,
         total_services: parseInt(servicesCount.rows[0].count),
         upcoming_bookings: upcomingBookings.rows
       }
@@ -2133,19 +2199,19 @@ const uploadShopProfileImage = [
           [vendorId]
       );
 
-      // Insert new profile image
+      // Insert new profile image — starts as 'pending' until admin approves
       const result = await db.query(
           `INSERT INTO vendor_documents (
           vendor_id, document_url, document_type, is_primary,
           verification_status, created_at, updated_at
-        ) VALUES ($1, $2, 'shop_profile_image', true, 'approved', NOW(), NOW())
+        ) VALUES ($1, $2, 'shop_profile_image', true, 'pending', NOW(), NOW())
         RETURNING *`,
           [vendorId, imageUrl]
       );
 
       res.json({
         success: true,
-        message: 'Profile image uploaded successfully.',
+        message: 'Profile image uploaded successfully. It will be visible to customers after admin approval.',
         data: result.rows[0]
       });
 
@@ -2168,6 +2234,7 @@ const uploadShopGalleryImages = [
 
     try {
       const vendorId = req.user.userId;
+
       const { document_type } = req.body; // 'shop' or 'portfolio'
 
       if (!req.files || req.files.length === 0) {
@@ -2205,12 +2272,12 @@ const uploadShopGalleryImages = [
         const imageUrl = `/uploads/shops/${file.filename}`;
         const isPrimary = i === 0 && currentCount.rows[0].count === '0';
 
+        // Gallery images start as 'pending' until admin approves
         const result = await client.query(
-
             `INSERT INTO vendor_documents (
             vendor_id, document_url, document_type, is_primary,
             verification_status, created_at, updated_at
-          ) VALUES ($1, $2, 'shop_gallery_image', $3, 'approved', NOW(), NOW())
+          ) VALUES ($1, $2, 'shop_gallery_image', $3, 'pending', NOW(), NOW())
           RETURNING *`,
             [vendorId, imageUrl, isPrimary]
         );
@@ -2222,7 +2289,7 @@ const uploadShopGalleryImages = [
 
       res.json({
         success: true,
-        message: `${uploadedImages.length} image(s) uploaded successfully.`,
+        message: `${uploadedImages.length} image(s) uploaded successfully. They will be visible to customers after admin approval.`,
         data: uploadedImages
       });
 
@@ -2246,9 +2313,10 @@ const getVendorImages = async (req, res) => {
     const vendorId = req.user.userId;
 
     const result = await db.query(
-        `SELECT document_id, document_url, document_type, is_primary, created_at
+        `SELECT document_id, document_url, document_type, is_primary,
+              verification_status, admin_comments, created_at
        FROM vendor_documents
-       WHERE vendor_id = $1 
+       WHERE vendor_id = $1
          AND document_type IN ('shop_profile_image', 'shop_gallery_image')
          AND status = 'active'
        ORDER BY is_primary DESC, created_at DESC`,
