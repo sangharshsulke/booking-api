@@ -663,6 +663,74 @@ const checkUser = async (req, res) => {
 };
 
 
+// ============================================
+// DELETE ACCOUNT (self-service, permanent)
+// DELETE /auth/account
+//
+// Two-step confirmation:
+//   1. App shows an "Are you sure?" dialog explaining that all data
+//      (bookings, reviews, shop details, etc.) will be permanently erased.
+//   2. Only if the customer confirms does the app call this endpoint with
+//      { confirm: true }. Without that flag the request is rejected, so a
+//      stray/accidental call can never delete an account.
+//
+// The actual erase is a hard DELETE on the users row. Every related table
+// (user_profiles, vendor_shop_details, vendor_documents, vendor_services,
+// bookings, booking_services, vendor_metrics, reviews, vendor_holidays,
+// vendor_early_closures, notifications) has an ON DELETE CASCADE foreign
+// key back to users, so the database wipes all of that user's data in one
+// transaction-safe statement — no manual table-by-table cleanup needed.
+// ============================================
+const deleteAccount = async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const { confirm } = req.body;
+
+    if (confirm !== true) {
+      return res.status(400).json({
+        success: false,
+        code: 'CONFIRMATION_REQUIRED',
+        message: 'Account deletion is permanent and erases all your data. Resend this request with { "confirm": true } to proceed.',
+      });
+    }
+
+    const userCheck = await db.query(
+        'SELECT user_type FROM users WHERE user_id = $1',
+        [userId]
+    );
+
+    if (userCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Account not found.' });
+    }
+
+    // Guard rail: a SUPERADMIN must never be able to delete themselves via
+    // this self-service endpoint (mirrors the same protection admins have
+    // when deleting other users).
+    if (userCheck.rows[0].user_type === 'SUPERADMIN') {
+      return res.status(403).json({
+        success: false,
+        message: 'SUPERADMIN accounts cannot be deleted from here. Contact another SUPERADMIN.',
+      });
+    }
+
+    await db.query('DELETE FROM users WHERE user_id = $1', [userId]);
+
+    console.log(`🗑️ Account permanently deleted: user_id=${userId}`);
+
+    res.json({
+      success: true,
+      message: 'Your account and all associated data have been permanently deleted.',
+    });
+  } catch (error) {
+    console.error('❌ Delete account error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error deleting account.',
+      error: error.message,
+    });
+  }
+};
+
 module.exports = {
   register,
   login,
@@ -672,4 +740,5 @@ module.exports = {
   verifyOTP,
   logout,
   checkUser,
+  deleteAccount,
 };

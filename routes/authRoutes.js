@@ -29,4 +29,8 @@ router.put('/profile', verifyToken, authController.updateProfile);
 // the device_id check in the auth middleware.
 router.post('/logout', verifyToken, authController.logout);
 
+// Self-service permanent account deletion. Client must confirm first
+// (show an "Are you sure?" dialog) and send { confirm: true }.
+router.delete('/account', verifyToken, authController.deleteAccount);
+
 module.exports = router;

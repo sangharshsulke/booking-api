@@ -2972,8 +2972,20 @@ const sendNotification = async (req, res) => {
     await client.query('COMMIT');
 
     // Try to send FCM push notifications (optional, won't fail if error)
+    // NOTE: each send is isolated in its own try/catch so one bad/expired
+    // token doesn't abort delivery to the rest of the batch, and so we get
+    // a clear log line per recipient instead of one swallowed "non-critical"
+    // error for the whole loop.
+    let tokensFound = 0;
+    let pushesSent = 0;
+    let pushesFailed = 0;
+
     try {
       const admin = require('../config/firebase');
+
+      if (!admin.apps.length) {
+        console.error('❌ FCM skipped: Firebase Admin SDK is not initialized (check FIREBASE_* env vars on the server).');
+      }
 
       for (const recipient of recipientUsers) {
         const fcmResult = await client.query(
@@ -2981,9 +2993,17 @@ const sendNotification = async (req, res) => {
             [recipient.user_id]
         );
 
-        if (fcmResult.rows.length > 0 && fcmResult.rows[0].fcm_token) {
-          await admin.messaging().send({
-            token: fcmResult.rows[0].fcm_token,
+        const fcmToken = fcmResult.rows[0]?.fcm_token;
+        if (!fcmToken) {
+          console.log(`ℹ️ No fcm_token on file for user ${recipient.user_id} — skipping push (DB notification still created).`);
+          continue;
+        }
+
+        tokensFound++;
+
+        try {
+          const messageId = await admin.messaging().send({
+            token: fcmToken,
             notification: {
               title: title.trim(),
               body: message.trim()
@@ -2991,13 +3011,21 @@ const sendNotification = async (req, res) => {
             data: {
               type: 'admin_notification',
               title: title.trim(),
+              body: message.trim(),
               message: message.trim()
             }
           });
+          pushesSent++;
+          console.log(`✅ FCM push sent to user ${recipient.user_id} — messageId: ${messageId}`);
+        } catch (sendErr) {
+          pushesFailed++;
+          console.error(`❌ FCM push FAILED for user ${recipient.user_id} (token: ${fcmToken.substring(0, 15)}...):`, sendErr.code || sendErr.message);
         }
       }
+
+      console.log(`📊 FCM summary: ${recipientUsers.length} recipient(s), ${tokensFound} had a token, ${pushesSent} sent, ${pushesFailed} failed.`);
     } catch (fcmError) {
-      console.error('FCM notification error (non-critical):', fcmError);
+      console.error('FCM notification block error (non-critical):', fcmError);
     }
 
     console.log(`✅ Notification sent to ${recipientUsers.length} recipient(s)`);

@@ -9,6 +9,7 @@
  *   GET    /api/auth/profile
  *   PUT    /api/auth/profile
  *   POST   /api/auth/logout
+ *   DELETE /api/auth/account
  */
 
 const request  = require('supertest');
@@ -511,6 +512,85 @@ describe('POST /api/auth/logout', () => {
 
   test('should return 401 when no token is provided', async () => {
     const res = await request(app).post('/api/auth/logout');
+    expect(res.statusCode).toBe(401);
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────────
+// DELETE /api/auth/account
+// ──────────────────────────────────────────────────────────────────────────────
+
+describe('DELETE /api/auth/account', () => {
+  test('should reject deletion when confirm flag is missing', async () => {
+    const token = makeToken(1, 'CUSTOMER');
+    db.query.mockResolvedValueOnce({ rows: [{ device_id: 'device-001' }] }); // device check
+
+    const res = await request(app)
+      .delete('/api/auth/account')
+      .set(bearer(token))
+      .send({});
+
+    expect(res.statusCode).toBe(400);
+    expect(res.body.success).toBe(false);
+    expect(res.body.code).toBe('CONFIRMATION_REQUIRED');
+  });
+
+  test('should permanently delete the account and all its data when confirmed', async () => {
+    const token = makeToken(1, 'CUSTOMER');
+    db.query
+      .mockResolvedValueOnce({ rows: [{ device_id: 'device-001' }] })   // device check
+      .mockResolvedValueOnce({ rows: [{ user_type: 'CUSTOMER' }] })     // userCheck
+      .mockResolvedValueOnce({ rows: [] });                             // DELETE FROM users
+
+    const res = await request(app)
+      .delete('/api/auth/account')
+      .set(bearer(token))
+      .send({ confirm: true });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.message).toMatch(/permanently deleted/i);
+    expect(db.query).toHaveBeenLastCalledWith(
+      'DELETE FROM users WHERE user_id = $1',
+      [1]
+    );
+  });
+
+  test('should return 404 when the account no longer exists', async () => {
+    const token = makeToken(1, 'CUSTOMER');
+    db.query
+      .mockResolvedValueOnce({ rows: [{ device_id: 'device-001' }] }) // device check
+      .mockResolvedValueOnce({ rows: [] });                            // userCheck: not found
+
+    const res = await request(app)
+      .delete('/api/auth/account')
+      .set(bearer(token))
+      .send({ confirm: true });
+
+    expect(res.statusCode).toBe(404);
+    expect(res.body.success).toBe(false);
+  });
+
+  test('should refuse to delete a SUPERADMIN account', async () => {
+    const token = makeToken(1, 'SUPERADMIN');
+    db.query
+      .mockResolvedValueOnce({ rows: [{ device_id: 'device-001' }] })     // device check
+      .mockResolvedValueOnce({ rows: [{ user_type: 'SUPERADMIN' }] });    // userCheck
+
+    const res = await request(app)
+      .delete('/api/auth/account')
+      .set(bearer(token))
+      .send({ confirm: true });
+
+    expect(res.statusCode).toBe(403);
+    expect(res.body.success).toBe(false);
+  });
+
+  test('should return 401 when no token is provided', async () => {
+    const res = await request(app)
+      .delete('/api/auth/account')
+      .send({ confirm: true });
+
     expect(res.statusCode).toBe(401);
   });
 });
